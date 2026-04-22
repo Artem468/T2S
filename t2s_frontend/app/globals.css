@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+:root {
+  --background: #FBF8FC;
+  --foreground: #232530;
+  --primary: #006B62;
+  --button-hover: #E2FFF9;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-futuraround), sans-serif;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-montserrat);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-montserrat), sans-serif;
+}
+
+.t2s-query-area {
+  scrollbar-width: thin;
+  scrollbar-color: #006b62 #d8d8d8;
+}
+
+.t2s-query-area::-webkit-scrollbar {
+  width: 8px;
+}
+
+.t2s-query-area::-webkit-scrollbar-track {
+  background: #d8d8d8;
+  border-radius: 8px;
+}
+
+.t2s-query-area::-webkit-scrollbar-thumb {
+  background: #006b62;
+  border-radius: 8px;
+}
