@@ -47,5 +47,7 @@ class ChatExecutorConsumer(AsyncWebsocketConsumer):
     async def chat_message(self, event):
         message = event['text']
         await self.send(text_data=json.dumps({
-            'message': message
+            'type': 'sql',
+            'text': message,
+            'chat_id': event['chat_id'],
         }))
