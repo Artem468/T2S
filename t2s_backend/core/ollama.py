@@ -15,7 +15,6 @@ def _build_sql_prompt(question: str) -> str:
         "3. Количество заказов: COUNT(o.order_id); сумма: SUM(o.price_order_local).\n"
         "4. Разница времени в секундах: (julianday(t2) - julianday(t1)) * 86400.\n"
         "5. Если данных в схеме нет — одна строка: SELECT 1 WHERE 0;\n\n"
-        "CREATE TABLE IF NOT EXISTS cities (city_id INTEGER PRIMARY KEY, name TEXT);\n"
         "CREATE TABLE IF NOT EXISTS orders (\n"
         "  order_id TEXT PRIMARY KEY, city_id INTEGER, user_id TEXT, driver_id TEXT,\n"
         "  status_order TEXT, order_timestamp TEXT, order_modified_local TEXT,\n"

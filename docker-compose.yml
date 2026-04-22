@@ -39,7 +39,6 @@ services:
     working_dir: /app
     volumes:
       - static_volume:/app/static
-      - ./llama-3-8b.Q4_K_M.gguf:/app/llama-3-8b.Q4_K_M.gguf:ro
       - ./incity.db:/app/incity.db:ro
     expose:
       - "8000"
@@ -64,7 +63,6 @@ services:
       celery -A t2s_backend worker --loglevel=INFO
     volumes:
       - static_volume:/app/static
-      - ./llama-3-8b.Q4_K_M.gguf:/app/llama-3-8b.Q4_K_M.gguf:ro
       - ./incity.db:/app/incity.db:ro
     env_file: .env
     depends_on:
