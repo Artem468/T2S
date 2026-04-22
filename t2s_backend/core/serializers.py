@@ -13,3 +13,7 @@ class MessagePreviewSerializer(serializers.ModelSerializer):
     class Meta:
         model = Message
         fields = ['id', 'message', 'created_at']
+
+
+class MessageDetailResponseSerializer(MessagePreviewSerializer):
+    payload = serializers.JSONField(allow_null=True)

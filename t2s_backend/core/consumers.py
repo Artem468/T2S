@@ -2,9 +2,12 @@ import json
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
+from django.conf import settings
+from sqlalchemy import text
 
-from core.models import Chat
+from core.models import Chat, Message, Role
 from core.tasks import process_t2s_task
+from core.utils import fetch_data
 
 
 class ChatExecutorConsumer(AsyncWebsocketConsumer):
@@ -24,7 +27,13 @@ class ChatExecutorConsumer(AsyncWebsocketConsumer):
         chat_id = data.get('chat_id')
 
         chat_obj = await self.get_or_create_chat(text=message_text, chat_id=chat_id)
-        
+
+        await Message.objects.acreate(
+            chat=chat_obj,
+            message=message_text,
+            role=Role.USER
+        )
+
         if self.room_group_name is None:
             self.room_group_name = f"chat_{chat_obj.id}"
             await self.channel_layer.group_add(self.room_group_name, self.channel_name)
@@ -46,8 +55,22 @@ class ChatExecutorConsumer(AsyncWebsocketConsumer):
 
     async def chat_message(self, event):
         message = event['text']
+        chat_id = event['chat_id']
+        await Message.objects.acreate(
+            chat_id=chat_id,
+            message=message,
+            role=Role.USER
+        )
         await self.send(text_data=json.dumps({
             'type': 'sql',
             'text': message,
-            'chat_id': event['chat_id'],
+            'chat_id': chat_id,
+        }))
+
+        result = await fetch_data(message)
+
+        await self.send(text_data=json.dumps({
+            'type': 'data',
+            'payload': result,
+            'chat_id': chat_id,
         }))

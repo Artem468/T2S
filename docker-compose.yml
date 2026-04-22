@@ -22,8 +22,9 @@ services:
              uvicorn t2s_backend.asgi:application --host 0.0.0.0 --port 8000 --workers 1"
     working_dir: /app
     volumes:
-      - ./t2s_backend:/app
       - static_volume:/app/static
+      - ./llama-3-8b.Q4_K_M.gguf:/app/llama-3-8b.Q4_K_M.gguf:ro
+      - ./incity.db:/app/incity.db:ro
     expose:
       - "8000"
     env_file: .env
@@ -42,8 +43,9 @@ services:
     command: >
       celery -A t2s_backend worker --loglevel=INFO
     volumes:
-      - ./t2s_backend:/app
       - static_volume:/app/static
+      - ./llama-3-8b.Q4_K_M.gguf:/app/llama-3-8b.Q4_K_M.gguf:ro
+      - ./incity.db:/app/incity.db:ro
     env_file: .env
     depends_on:
       - t2s-django

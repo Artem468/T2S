@@ -21,7 +21,7 @@ class Chat(models.Model):
 class Message(models.Model):
     chat = models.ForeignKey(Chat, on_delete=models.CASCADE, null=False, blank=False, verbose_name="Чат")
     message = models.TextField(null=False, blank=False, verbose_name="Сообщение")
-    metadata = models.JSONField(null=True, blank=True, verbose_name="Метаданные")
+    metadata = models.JSONField(null=True, blank=True, verbose_name="Метаданные", default=None)
     role = models.CharField(
         max_length=10,
         choices=Role.choices,

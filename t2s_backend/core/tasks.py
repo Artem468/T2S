@@ -2,7 +2,6 @@ from asgiref.sync import async_to_sync
 from celery import shared_task
 from channels.layers import get_channel_layer
 from django.conf import settings
-from llama_cpp import Llama
 
 
 @shared_task(
@@ -26,11 +25,6 @@ def process_t2s_task(chat_id: int, question: str) -> str:
     7. Если в вопросе есть сущность, которой нет в описании таблиц (марка, имя, телефон), отвечай: -- данных нет
 
     ### Таблицы:
-    CREATE TABLE IF NOT EXISTS cities (
-        city_id INTEGER PRIMARY KEY,
-        name TEXT NOT NULL
-    );
-
     CREATE TABLE IF NOT EXISTS orders (
         order_id TEXT PRIMARY KEY,
         city_id INTEGER,
@@ -43,7 +37,6 @@ def process_t2s_task(chat_id: int, question: str) -> str:
         duration_in_seconds INTEGER,
         price_order_local REAL,
         price_start_local REAL,
-        FOREIGN KEY (city_id) REFERENCES cities (city_id)
     );
 
     CREATE TABLE IF NOT EXISTS tenders (
@@ -71,14 +64,7 @@ def process_t2s_task(chat_id: int, question: str) -> str:
     <|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n
     """
 
-    llm = Llama(
-        model_path="llama-3-8b.Q4_K_M.gguf",
-        n_ctx=4096,
-        n_threads=6,
-        n_gpu_layers=0
-    )
-
-    response = llm(
+    response = settings.LLM(
         sql_prompt.format(question, ""),
         max_tokens=256,
         stop=["<|eot_id|>", ";"],
