@@ -59,9 +59,15 @@ class MessageDetailView(APIView):
     )
     def get(self, request, message_id):
         instance = get_object_or_404(Message, id=message_id)
+        sql_text = instance.sql_for_data_query()
+        if not sql_text:
+            return Response(
+                {"error": "Для этого сообщения ещё нет сгенерированного SQL"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         try:
-            external_body = async_to_sync(fetch_data)(instance.message)
+            external_body = async_to_sync(fetch_data)(sql_text)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -81,9 +87,15 @@ class MessageExportView(APIView):
     )
     def get(self, request, message_id):
         instance = get_object_or_404(Message, id=message_id)
+        sql_text = instance.sql_for_data_query()
+        if not sql_text:
+            return Response(
+                {"error": "Для этого сообщения ещё нет сгенерированного SQL"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         try:
-            external_data = async_to_sync(fetch_data)(instance.message)
+            external_data = async_to_sync(fetch_data)(sql_text)
         except Exception as e:
             return Response(
                 {"error": f"SQLAlchemy Error: {str(e)}"},

@@ -57,18 +57,36 @@ class ChatExecutorConsumer(AsyncWebsocketConsumer):
         await Message.objects.acreate(
             chat_id=chat_id,
             message=message,
-            role=Role.USER
+            role=Role.LLM,
         )
-        await self.send(text_data=json.dumps({
-            'type': 'sql',
-            'text': message,
-            'chat_id': chat_id,
-        }))
-
-        result = await fetch_data(message)
-
-        await self.send(text_data=json.dumps({
-            'type': 'data',
-            'payload': result,
-            'chat_id': chat_id,
-        }))
+        await self.send(
+            text_data=json.dumps(
+                {
+                    'type': 'sql',
+                    'text': message,
+                    'chat_id': chat_id,
+                }
+            )
+        )
+        try:
+            result = await fetch_data(message)
+        except Exception as exc:
+            await self.send(
+                text_data=json.dumps(
+                    {
+                        'type': 'error',
+                        'text': str(exc),
+                        'chat_id': chat_id,
+                    }
+                )
+            )
+            return
+        await self.send(
+            text_data=json.dumps(
+                {
+                    'type': 'data',
+                    'payload': result,
+                    'chat_id': chat_id,
+                }
+            )
+        )

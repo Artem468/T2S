@@ -12,6 +12,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - app-network
 
   t2s-db:
     image: postgres:15
@@ -43,9 +45,12 @@ services:
       - "8000"
     env_file: .env
     depends_on:
-      - ollama-service
-      - t2s-db
-      - redis
+      ollama-service:
+        condition: service_healthy
+      t2s-db:
+        condition: service_started
+      redis:
+        condition: service_started
     restart: always
     networks:
       - app-network
@@ -63,8 +68,12 @@ services:
       - ./incity.db:/app/incity.db:ro
     env_file: .env
     depends_on:
-      - t2s-django
-      - redis
+      ollama-service:
+        condition: service_healthy
+      t2s-django:
+        condition: service_started
+      redis:
+        condition: service_started
     restart: always
     networks:
       - app-network

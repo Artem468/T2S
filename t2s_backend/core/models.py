@@ -33,6 +33,16 @@ class Message(models.Model):
     def __str__(self):
         return (self.message[:32] + "...") if len(self.message) > 32 else self.message
 
+    def sql_for_data_query(self):
+        if self.role == Role.LLM:
+            return self.message
+        follow = (
+            Message.objects.filter(chat=self.chat, role=Role.LLM, id__gt=self.id)
+            .order_by("id")
+            .first()
+        )
+        return follow.message if follow else None
+
     class Meta:
         verbose_name = "Сообщение"
         verbose_name_plural = "Сообщения"

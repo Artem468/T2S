@@ -15,5 +15,9 @@ class MessagePreviewSerializer(serializers.ModelSerializer):
         fields = ['id', 'message', 'created_at']
 
 
-class MessageDetailResponseSerializer(MessagePreviewSerializer):
-    payload = serializers.JSONField(allow_null=True)
+class MessageDetailResponseSerializer(serializers.ModelSerializer):
+    payload = serializers.JSONField(allow_null=True, read_only=True)
+
+    class Meta:
+        model = Message
+        fields = ["id", "message", "created_at", "payload"]

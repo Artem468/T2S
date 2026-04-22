@@ -231,9 +231,11 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "static")
-STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, "staticfiles"),
-]
+_staticfiles_dir = os.path.join(BASE_DIR, "staticfiles")
+STATICFILES_DIRS = [_staticfiles_dir] if os.path.isdir(_staticfiles_dir) else []
+
+OLLAMA_BASE = os.getenv("OLLAMA_BASE", "http://127.0.0.1:11434").rstrip("/")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "stable-code:3b")
 
 DATA_UPLOAD_MAX_MEMORY_SIZE = 104857600
 FILE_UPLOAD_MAX_MEMORY_SIZE = 104857600
