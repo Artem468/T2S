@@ -7,7 +7,7 @@ from core.models import Message, Chat
 class MessageInline(TabularInline):
     model = Message
     extra = 0
-    fields = ('role', 'message', 'metadata', 'created_at')
+    fields = ('role', 'message', 'description', 'created_at')
     readonly_fields = ('created_at',)
 
 @admin.register(Chat)

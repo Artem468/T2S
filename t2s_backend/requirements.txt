@@ -22,6 +22,8 @@ celery==5.6.3
     # via t2s-backend
 celery-types==0.23.0
     # via t2s-backend
+certifi==2026.4.22
+    # via requests
 channels==4.3.2
     # via
     #   channels-redis
@@ -29,7 +31,9 @@ channels==4.3.2
 channels-redis==4.3.0
     # via t2s-backend
 charset-normalizer==3.4.7
-    # via reportlab
+    # via
+    #   reportlab
+    #   requests
 click==8.3.2
     # via
     #   celery
@@ -80,7 +84,9 @@ h11==0.16.0
 httptools==0.7.1
     # via uvicorn
 idna==3.11
-    # via anyio
+    # via
+    #   anyio
+    #   requests
 inflection==0.5.1
     # via drf-spectacular
 jsonschema==4.26.0
@@ -125,6 +131,8 @@ referencing==0.37.0
     #   jsonschema-specifications
 reportlab==4.4.10
     # via t2s-backend
+requests==2.33.1
+    # via t2s-backend
 rpds-py==0.30.0
     # via
     #   jsonschema
@@ -151,6 +159,8 @@ tzlocal==5.3.1
     # via celery
 uritemplate==4.2.0
     # via drf-spectacular
+urllib3==2.6.3
+    # via requests
 uvicorn==0.44.0
     # via t2s-backend
 uvloop==0.22.1 ; platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32'

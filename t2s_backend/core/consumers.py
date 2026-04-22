@@ -26,7 +26,7 @@ class ChatExecutorConsumer(AsyncWebsocketConsumer):
 
         chat_obj = await self.get_or_create_chat(text=message_text, chat_id=chat_id)
 
-        await Message.objects.acreate(
+        __msg = await Message.objects.acreate(
             chat=chat_obj,
             message=message_text,
             role=Role.USER
@@ -36,7 +36,7 @@ class ChatExecutorConsumer(AsyncWebsocketConsumer):
             self.room_group_name = f"chat_{chat_obj.id}"
             await self.channel_layer.group_add(self.room_group_name, self.channel_name)
 
-        process_t2s_task.delay(chat_id=chat_obj.id, question=message_text)
+        process_t2s_task.delay(message_id=__msg.id,chat_id=chat_obj.id, question=message_text)
 
     @database_sync_to_async
     def get_or_create_chat(self, text: str, chat_id: int | None = None):
@@ -52,10 +52,14 @@ class ChatExecutorConsumer(AsyncWebsocketConsumer):
         return Chat.objects.create(name=name)
 
     async def chat_message(self, event):
-        message = event['text']
+        message = event['sql']
+        description = event['description']
         chat_id = event['chat_id']
+        message_id = event['message_id']
         await Message.objects.acreate(
             chat_id=chat_id,
+            description=description,
+            message_id=message_id,
             message=message,
             role=Role.LLM,
         )
@@ -64,6 +68,7 @@ class ChatExecutorConsumer(AsyncWebsocketConsumer):
                 {
                     'type': 'sql',
                     'text': message,
+                    'description': description,
                     'chat_id': chat_id,
                 }
             )

@@ -3,6 +3,7 @@ import re
 import urllib.error
 import urllib.request
 
+import requests
 from django.conf import settings
 
 
@@ -56,26 +57,36 @@ def extract_sql(raw: str) -> str:
 
 def generate_sql(question: str) -> str:
     prompt = _build_sql_prompt(question)
+    data = __process_request(prompt)
+    raw = data.get("response", "")
+    return extract_sql(raw)
+
+
+def generate_description(sql: str) -> str:
+    prompt = f"Объясни кратко и простым языком SQL запрос: {sql}"
+    data = __process_request(prompt)
+    raw = data.get("response", "")
+    return extract_sql(raw)
+
+
+def __process_request(prompt: str) -> dict:
     base = getattr(settings, "OLLAMA_BASE", "http://127.0.0.1:11434").rstrip("/")
     model = getattr(settings, "OLLAMA_MODEL", "stable-code:3b")
     url = f"{base}/api/generate"
-    payload = json.dumps(
-        {"model": model, "prompt": prompt, "stream": False},
-        ensure_ascii=False,
-    ).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
+    payload = {
+        "model": model,
+        "prompt": prompt,
+        "stream": False
+    }
     try:
-        with urllib.request.urlopen(req, timeout=180) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Ollama HTTP {e.code}: {body}") from e
-    except urllib.error.URLError as e:
-        raise RuntimeError(f"Ollama недоступен ({base}): {e.reason}") from e
-    raw = (data or {}).get("response", "")
-    return extract_sql(raw)
+        response = requests.post(
+            url,
+            json=payload,
+            timeout=180
+        )
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.HTTPError as e:
+        raise RuntimeError(f"Ollama HTTP {e.response.status_code}: {e.response.text}") from e
+    except requests.exceptions.RequestException as e:
+        raise RuntimeError(f"Ollama недоступен ({base}): {e}") from e

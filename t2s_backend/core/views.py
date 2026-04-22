@@ -58,8 +58,8 @@ class MessageDetailView(APIView):
         tags=['Сообщения']
     )
     def get(self, request, message_id):
-        instance = get_object_or_404(Message, id=message_id)
-        sql_text = instance.sql_for_data_query()
+        instance = get_object_or_404(Message, message_id=message_id)
+        sql_text = instance.message
         if not sql_text:
             return Response(
                 {"error": "Для этого сообщения ещё нет сгенерированного SQL"},
@@ -74,6 +74,7 @@ class MessageDetailView(APIView):
         serializer = MessagePreviewSerializer(instance)
         response_data = serializer.data
         response_data['payload'] = external_body
+        response_data['sql'] = sql_text
 
         return Response(response_data)
 

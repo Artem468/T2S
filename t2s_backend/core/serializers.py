@@ -12,12 +12,13 @@ class ChatSerializer(serializers.ModelSerializer):
 class MessagePreviewSerializer(serializers.ModelSerializer):
     class Meta:
         model = Message
-        fields = ['id', 'message', 'created_at']
+        fields = ['id', 'message', 'description', 'created_at']
 
 
 class MessageDetailResponseSerializer(serializers.ModelSerializer):
     payload = serializers.JSONField(allow_null=True, read_only=True)
+    sql = serializers.CharField(read_only=True)
 
     class Meta:
         model = Message
-        fields = ["id", "message", "created_at", "payload"]
+        fields = ["id", "message", "created_at", "payload", "sql"]
