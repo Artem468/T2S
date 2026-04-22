@@ -2,6 +2,7 @@ from asgiref.sync import async_to_sync
 from celery import shared_task
 from channels.layers import get_channel_layer
 from django.conf import settings
+from llama_cpp import Llama
 
 
 @shared_task(
@@ -10,9 +11,11 @@ from django.conf import settings
 )
 def process_t2s_task(chat_id: int, question: str) -> str:
     sql_prompt = """
+    <|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n
     Ты — опытный аналитик данных, мастер SQLite.
     Твоя задача: превратить вопрос в один идеальный SQL запрос.
-
+    Отвечай только SQL запросом и больше ничего
+    
     ПРАВИЛА:
     1. Используй только таблицы: cities (city_id, name), orders, tenders.
     2. Города всегда ищи через JOIN cities c ON o.city_id = c.city_id.
@@ -65,33 +68,33 @@ def process_t2s_task(chat_id: int, question: str) -> str:
 
     ### SQL ответ:
     {}
+    <|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n
     """
 
-    inputs = settings.TOKENIZER(
-        [sql_prompt.format(question, "")],
-        return_tensors="pt"
-    ).to("cuda")
-
-    outputs = settings.MODEL.generate(
-        **inputs,
-        max_new_tokens=120,
-        tokenizer=settings.TOKENIZER,
-        stop_strings=["###", "Вопрос:", "<|end_of_text|>", ";"],
-        use_cache=True
+    llm = Llama(
+        model_path="llama-3-8b.Q4_K_M.gguf",
+        n_ctx=4096,
+        n_threads=6,
+        n_gpu_layers=0
     )
 
-    full_text = settings.TOKENIZER.batch_decode(outputs)[0]
-    sql_query = full_text.split("### SQL ответ:")[1].replace("</s>", "").strip()
+    response = llm(
+        sql_prompt.format(question, ""),
+        max_tokens=256,
+        stop=["<|eot_id|>", ";"],
+        echo=False
+    )
 
     channel_layer = get_channel_layer()
     async_to_sync(channel_layer.group_send)(
         f"chat_{chat_id}",
         {
             "type": "chat.message",
-            "text": sql_query
+            "text": response["choices"][0]["text"].strip(),
+            "chat_id": chat_id,
         }
     )
 
-    return sql_query
+    return response["choices"][0]["text"].strip()
 
 

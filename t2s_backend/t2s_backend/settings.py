@@ -12,8 +12,6 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
 load_dotenv()
@@ -43,20 +41,6 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 AUTH_USER_MODEL = "users.User"
-
-base_model_path = "unsloth/llama-3-8b-bnb-4bit"
-lora_model_path = "./sql_model_lora"
-
-model_path = "sql_model_lora"
-
-device = "cpu"
-
-TOKENIZER = AutoTokenizer.from_pretrained(model_path)
-MODEL = AutoModelForCausalLM.from_pretrained(
-    model_path,
-    torch_dtype=torch.float32,
-    device_map=None
-).to(device)
 
 
 INSTALLED_APPS = [

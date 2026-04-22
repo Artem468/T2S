@@ -7,8 +7,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-RUN pip install --prefix=/install  --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
-
 COPY ../requirements.txt .
 RUN pip install --upgrade pip \
     && pip install --prefix=/install --no-cache-dir -r requirements.txt
@@ -16,8 +14,10 @@ RUN pip install --upgrade pip \
 
 FROM python:3.12-slim
 WORKDIR /app
- 
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /install /usr/local
