@@ -1,4 +1,16 @@
 services:
+  ollama-service:
+    image: ollama/ollama:latest
+    container_name: ollama_sql
+    volumes:
+      - ollama_storage:/root/.ollama
+    entrypoint: /bin/sh -c "ollama serve & sleep 5 && ollama pull stable-code:3b && wait"
+    healthcheck:
+      test: [ "CMD", "ollama", "list" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   t2s-db:
     image: postgres:15
     env_file: .env
@@ -29,6 +41,7 @@ services:
       - "8000"
     env_file: .env
     depends_on:
+      - ollama-service
       - t2s-db
       - redis
     restart: always
@@ -84,6 +97,7 @@ volumes:
   postgres_data:
   static_volume:
   redis_data:
+  ollama_storage:
 
 networks:
   app-network:
