@@ -12,7 +12,6 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-from llama_cpp import Llama
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
 load_dotenv()
@@ -44,12 +43,6 @@ CSRF_TRUSTED_ORIGINS = [
 engine = create_async_engine("sqlite+aiosqlite:///incity.db")
 ASYNC_SESSION = async_sessionmaker(engine, expire_on_commit=False)
 
-LLM = Llama(
-    model_path="llama-3-8b.Q4_K_M.gguf",
-    n_ctx=4096,
-    n_threads=6,
-    n_gpu_layers=0
-)
 
 AUTH_USER_MODEL = "users.User"
 

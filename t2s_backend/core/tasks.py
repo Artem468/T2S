@@ -1,7 +1,6 @@
 from asgiref.sync import async_to_sync
 from celery import shared_task
 from channels.layers import get_channel_layer
-from django.conf import settings
 
 
 @shared_task(
@@ -64,23 +63,18 @@ def process_t2s_task(chat_id: int, question: str) -> str:
     <|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n
     """
 
-    response = settings.LLM(
-        sql_prompt.format(question, ""),
-        max_tokens=256,
-        stop=["<|eot_id|>", ";"],
-        echo=False
-    )
+
 
     channel_layer = get_channel_layer()
     async_to_sync(channel_layer.group_send)(
         f"chat_{chat_id}",
         {
             "type": "chat.message",
-            "text": response["choices"][0]["text"].strip(),
+            "text": "test",
             "chat_id": chat_id,
         }
     )
 
-    return response["choices"][0]["text"].strip()
+    return "test"
 
 

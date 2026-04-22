@@ -2,8 +2,6 @@ import json
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
-from django.conf import settings
-from sqlalchemy import text
 
 from core.models import Chat, Message, Role
 from core.tasks import process_t2s_task

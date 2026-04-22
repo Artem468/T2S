@@ -2,18 +2,16 @@ import io
 import json
 
 from asgiref.sync import async_to_sync
-from django.conf import settings
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
+from docx import Document
 from drf_spectacular.utils import extend_schema, extend_schema_view
+from openpyxl import Workbook
+from reportlab.pdfgen import canvas
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from sqlalchemy import text
-from openpyxl import Workbook
-from docx import Document
-from reportlab.pdfgen import canvas
 
 from core.models import Chat, Role, Message
 from core.serializers import ChatSerializer, MessagePreviewSerializer, MessageDetailResponseSerializer
