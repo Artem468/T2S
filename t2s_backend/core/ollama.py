@@ -1,7 +1,4 @@
-import json
 import re
-import urllib.error
-import urllib.request
 
 import requests
 from django.conf import settings
@@ -70,7 +67,7 @@ def generate_description(sql: str) -> str:
 
 
 def __process_request(prompt: str) -> dict:
-    base = getattr(settings, "OLLAMA_BASE", "http://127.0.0.1:11434").rstrip("/")
+    base = getattr(settings, "OLLAMA_BASE", "http://127.0.0.1:11434")
     model = getattr(settings, "OLLAMA_MODEL", "stable-code:3b")
     url = f"{base}/api/generate"
     payload = {
