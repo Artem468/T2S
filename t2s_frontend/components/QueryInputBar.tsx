@@ -10,7 +10,6 @@ type QueryInputBarProps = {
   onSubmit: (nextValue?: string) => void;
   placeholder?: string;
   disabled?: boolean;
-  /** Ширина и внешние отступы: например `mx-auto mt-14 w-2/3` или `w-full`. */
   className?: string;
 };
 
@@ -61,6 +60,7 @@ export function QueryInputBar({
       }}
       onMouseDown={(event) => {
         if ((event.target as HTMLElement).closest("button")) return;
+        if ((event.target as HTMLElement).closest("textarea, input")) return;
         event.preventDefault();
         focusInput();
       }}

@@ -7,7 +7,12 @@ import { MessageSquare } from "lucide-react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { useEffect, useRef, useState } from "react";
-import type { ExportFormat } from "@/lib/api";
+import {
+  MAILING_COMMENT_MAX_LENGTH,
+  type CreateMailingPayload,
+  type ExportFormat,
+  type MailingRepeat,
+} from "@/lib/api";
 import type { BarDatum } from "@/components/chat/chartFromRows";
 export type DashboardPhase = "idle" | "loading" | "ready";
 
@@ -54,6 +59,8 @@ export type ChatDashboardViewProps = {
   onCopyLeafSql?: (chatId: number, messageId: number) => void;
   canDownload?: boolean;
   onDownloadFormat?: (fmt: ExportFormat) => void | Promise<void>;
+  mailingMessageId?: number | null;
+  onCreateMailing?: (payload: CreateMailingPayload) => void | Promise<void>;
 };
 
 const sqlTheme = {
@@ -130,10 +137,13 @@ export function ChatDashboardView({
   onCopyLeafSql,
   canDownload = false,
   onDownloadFormat,
+  mailingMessageId = null,
+  onCreateMailing,
 }: ChatDashboardViewProps) {
   const showBubble = userBubble.length > 0 && (phase === "loading" || phase === "ready");
   const copySource = sqlCopyText ?? sqlText ?? "";
   const [copyToast, setCopyToast] = useState<string | null>(null);
+  const [mailingModalOpen, setMailingModalOpen] = useState(false);
   const toastTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -532,7 +542,9 @@ export function ChatDashboardView({
             <p className="text-[18px] font-bold uppercase leading-none text-[#0b7a73]">РАССЫЛКА</p>
             <button
               type="button"
-              className="mt-5 w-full rounded-[12px] bg-[#c0eeea] py-3 text-[14px] font-semibold text-[#0b7a73] transition-colors hover:bg-[#b4e8e3]"
+              disabled={mailingMessageId == null}
+              className="mt-5 w-full rounded-[12px] bg-[#c0eeea] py-3 text-[14px] font-semibold text-[#0b7a73] transition-colors hover:bg-[#b4e8e3] disabled:cursor-not-allowed disabled:opacity-55"
+              onClick={() => setMailingModalOpen(true)}
             >
               Отправить ссылку
             </button>
@@ -540,10 +552,461 @@ export function ChatDashboardView({
         </div>
       </aside>
     </div>
+    {mailingModalOpen && (
+      <MailingModal
+        onClose={() => setMailingModalOpen(false)}
+        onSubmit={onCreateMailing}
+        messageId={mailingMessageId}
+      />
+    )}
     </>
   );
 }
 
+function formatDateTimeInputLocal(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  const hh = String(date.getHours()).padStart(2, "0");
+  const mm = String(date.getMinutes()).padStart(2, "0");
+  return `${y}-${m}-${d}T${hh}:${mm}`;
+}
+
+function toIsoFromLocalInput(localValue: string): string {
+  const dt = new Date(localValue);
+  return dt.toISOString();
+}
+
+function addEmails(raw: string, current: string[]): string[] {
+  const out = [...current];
+  const seen = new Set(out.map((x) => x.toLowerCase()));
+  const parts = raw
+    .split(/[,\s;]+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  for (const item of parts) {
+    if (!seen.has(item)) {
+      seen.add(item);
+      out.push(item);
+    }
+  }
+  return out;
+}
+
+function repeatLabel(value: MailingRepeat): string {
+  if (value === "day") return "Каждый день";
+  if (value === "week") return "Каждую неделю";
+  if (value === "month") return "Каждый месяц";
+  return "Разово";
+}
+
+function toMondayIndex(day: number): number {
+  return (day + 6) % 7;
+}
+
+function sameDate(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+function MailingModal({
+  onClose,
+  onSubmit,
+  messageId,
+}: {
+  onClose: () => void;
+  onSubmit?: (payload: CreateMailingPayload) => void | Promise<void>;
+  messageId: number | null;
+}) {
+  const [emailInput, setEmailInput] = useState("");
+  const [emails, setEmails] = useState<string[]>([]);
+  const [scheduledAt, setScheduledAt] = useState(() => {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() + 30);
+    return formatDateTimeInputLocal(d);
+  });
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() + 30);
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
+  const [repeat, setRepeat] = useState<MailingRepeat>("none");
+  const [comment, setComment] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [successText, setSuccessText] = useState<string | null>(null);
+
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
+  useEffect(() => {
+    const d = new Date(scheduledAt);
+    if (Number.isNaN(d.getTime())) return;
+    setCalendarMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+  }, [scheduledAt]);
+
+  const commitEmails = () => {
+    if (!emailInput.trim()) return;
+    setEmails((prev) => addEmails(emailInput, prev));
+    setEmailInput("");
+  };
+
+  const submit = async () => {
+    setFormError(null);
+    setSuccessText(null);
+
+    if (messageId == null) {
+      setFormError("Не найден message_id для рассылки.");
+      return;
+    }
+
+    const finalEmails = emailInput.trim() ? addEmails(emailInput, emails) : emails;
+    if (finalEmails.length === 0) {
+      setFormError("Добавьте хотя бы один email.");
+      return;
+    }
+
+    if (!scheduledAt) {
+      setFormError("Укажите дату и время отправки.");
+      return;
+    }
+
+    const payload: CreateMailingPayload = {
+      message_id: messageId,
+      scheduled_at: toIsoFromLocalInput(scheduledAt),
+      repeat,
+      emails: finalEmails,
+      comment: comment.trim(),
+    };
+
+    setSubmitting(true);
+    try {
+      await onSubmit?.(payload);
+      setSuccessText(`Рассылка создана: ${repeatLabel(repeat)}.`);
+      setEmails([]);
+      setEmailInput("");
+      setComment("");
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : "Не удалось создать рассылку.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const selectedDateTime = (() => {
+    const d = new Date(scheduledAt);
+    if (Number.isNaN(d.getTime())) return new Date();
+    return d;
+  })();
+
+  const monthTitle = new Intl.DateTimeFormat("ru-RU", {
+    month: "long",
+  })
+    .format(calendarMonth)
+    .toUpperCase();
+
+  const currentMonthYear = new Intl.DateTimeFormat("ru-RU", {
+    year: "numeric",
+  }).format(calendarMonth);
+
+  const firstDayOffset = toMondayIndex(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1).getDay());
+  const daysInMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate();
+  const daysInPrevMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 0).getDate();
+  const calendarCells = Array.from({ length: 42 }).map((_, i) => {
+    if (i < firstDayOffset) {
+      const day = daysInPrevMonth - firstDayOffset + i + 1;
+      const date = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, day);
+      return { date, inCurrentMonth: false };
+    }
+    if (i < firstDayOffset + daysInMonth) {
+      const day = i - firstDayOffset + 1;
+      const date = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day);
+      return { date, inCurrentMonth: true };
+    }
+    const day = i - (firstDayOffset + daysInMonth) + 1;
+    const date = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, day);
+    return { date, inCurrentMonth: false };
+  });
+
+  const selectCalendarDate = (picked: Date) => {
+    const next = new Date(selectedDateTime);
+    next.setFullYear(picked.getFullYear(), picked.getMonth(), picked.getDate());
+    setScheduledAt(formatDateTimeInputLocal(next));
+  };
+
+  const selectedDateLine = new Intl.DateTimeFormat("ru-RU", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(selectedDateTime);
+
+  const timeValue = `${pad2(selectedDateTime.getHours())}:${pad2(selectedDateTime.getMinutes())}`;
+
+  const onTimeInputChange = (value: string) => {
+    if (!value) return;
+    const [hh, mm] = value.split(":").map(Number);
+    if (Number.isNaN(hh) || Number.isNaN(mm)) return;
+    const d = new Date(selectedDateTime);
+    d.setHours(hh, mm, 0, 0);
+    setScheduledAt(formatDateTimeInputLocal(d));
+  };
+
+  const dayLetters = ["п", "в", "с", "ч", "п", "с", "в"];
+
+  return (
+    <div className="fixed inset-0 z-[120] overflow-y-auto overflow-x-hidden bg-black/25 px-2 py-4 backdrop-blur-[2px] sm:px-4 sm:py-6">
+      <div className="flex min-h-[100svh] w-full items-start justify-center sm:items-center sm:py-2">
+        <section className="relative my-auto w-full max-w-[780px] max-h-none rounded-[16px] border border-[#0E847D] bg-[#FBFBFB] px-2.5 py-3 text-[#0A7772] shadow-[0_16px_44px_rgba(0,0,0,0.12)] sm:max-h-[min(90dvh,800px)] sm:overflow-y-auto sm:rounded-[20px] sm:px-4 sm:py-4 lg:px-5 lg:py-5">
+        <div className="mb-1.5 flex justify-end sm:mb-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-[#c8d5d4] bg-white text-[#6a8a87] transition hover:border-[#17C7BE] hover:text-[#0A7772]"
+            aria-label="Закрыть окно рассылки"
+          >
+            <X className="h-4 w-4" strokeWidth={2} />
+          </button>
+        </div>
+
+        <div className="mx-auto flex w-full max-w-[min(100%,560px)] flex-col gap-3 sm:max-w-[620px] sm:gap-4">
+          <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,280px)_1fr] lg:items-start lg:gap-6">
+            <div className="flex w-full min-w-0 flex-col items-stretch gap-3 sm:items-center sm:gap-3.5 lg:items-stretch">
+              <section className="w-full rounded-[10px] border border-[#c8d5d4] bg-[#F7F7FB] px-2.5 pb-4 pt-2.5 shadow-[0_4px_12px_rgba(0,0,0,0.07)] sm:px-4 sm:pb-5 sm:pt-3 lg:max-w-none">
+                <header className="mb-1.5 flex items-center justify-center gap-0.5 sm:mb-2 sm:gap-2">
+                  <button
+                    type="button"
+                    aria-label="Предыдущий месяц"
+                    className="flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center text-[#1AC8BE] sm:h-7 sm:w-7"
+                    onClick={() =>
+                      setCalendarMonth(
+                        (prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1)
+                      )
+                    }
+                  >
+                    <span className="text-[22px] font-light leading-none sm:text-[28px]">‹</span>
+                  </button>
+                  <h2 className="min-w-0 flex-1 px-0.5 text-center text-[18px] font-normal uppercase leading-tight tracking-[0.02em] text-[#0A7772] sm:text-[22px] sm:leading-none lg:text-[26px]">
+                    <span className="lowercase">{monthTitle}</span>
+                  </h2>
+                  <button
+                    type="button"
+                    aria-label="Следующий месяц"
+                    className="flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center text-[#1AC8BE] sm:h-7 sm:w-7"
+                    onClick={() =>
+                      setCalendarMonth(
+                        (prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1)
+                      )
+                    }
+                  >
+                    <span className="text-[22px] font-light leading-none sm:text-[28px]">›</span>
+                  </button>
+                </header>
+                <p className="mb-1.5 text-center text-[10px] text-[#0A948D]/90 sm:mb-2 sm:text-[11px]">{currentMonthYear}</p>
+                <div className="mx-auto mb-1.5 h-px w-[88%] bg-[#0FB7B0] sm:mb-2" />
+
+                <div className="grid grid-cols-7 gap-x-0 gap-y-1 px-0 pb-0 pt-0 text-center sm:gap-x-1.5 sm:gap-y-2 sm:px-0.5 sm:pb-0.5 sm:pt-0.5">
+                  {dayLetters.map((day, index) => (
+                    <div
+                      key={`${day}-${index}`}
+                      className="py-0 text-[10px] font-normal lowercase leading-[1.2] text-[#0A7772] sm:py-0.5 sm:text-[12px]"
+                    >
+                      {day}
+                    </div>
+                  ))}
+                  {calendarCells.map((cell, index) => (
+                    <button
+                      key={`${cell.date.toISOString()}-${index}`}
+                      type="button"
+                      onClick={() => selectCalendarDate(cell.date)}
+                      className={`min-h-[1.75rem] rounded-[5px] py-1 text-[15px] font-light leading-none outline-none transition focus-visible:ring-2 focus-visible:ring-[#17C7BE]/40 sm:min-h-[2.125rem] sm:py-1.5 sm:text-[18px] lg:text-[20px] ${
+                        sameDate(cell.date, selectedDateTime)
+                          ? "font-semibold text-[#0A7772] underline decoration-[#0FB7B0] decoration-2 underline-offset-4 sm:underline-offset-[5px]"
+                          : cell.inCurrentMonth
+                          ? "text-[#0A948D] hover:bg-white/50"
+                          : "text-[#0A948D]/45 hover:bg-white/40 hover:text-[#0A948D]/70"
+                      }`}
+                      aria-label={new Intl.DateTimeFormat("ru-RU", {
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
+                      }).format(cell.date)}
+                    >
+                      {cell.date.getDate()}
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <div className="w-full rounded-[12px] border border-[#c5e8e4] bg-[#F1F1F5] px-2.5 py-2.5 shadow-[0_6px_16px_rgba(0,0,0,0.07)] sm:rounded-[14px] sm:px-4 sm:py-3.5 lg:max-w-none">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#55525A] sm:text-[11px]">Дата отправки</p>
+                <p className="mt-1.5 text-balance text-[14px] font-medium leading-snug text-[#0A7772] sm:mt-2 sm:text-[15px]">
+                  {selectedDateLine}
+                </p>
+                <label htmlFor="mailing-time" className="mt-3 block text-[10px] font-semibold uppercase tracking-[0.1em] text-[#55525A] sm:mt-3.5 sm:text-[11px]">
+                  Время
+                </label>
+                <input
+                  id="mailing-time"
+                  type="time"
+                  value={timeValue}
+                  onChange={(e) => onTimeInputChange(e.target.value)}
+                  className="mt-1.5 w-full max-w-full cursor-pointer rounded-lg border-2 border-[#17C7BE] bg-[#FBFBFB] px-2.5 py-2 text-[15px] font-normal text-[#0A7772] shadow-sm focus:outline-none focus:ring-2 focus:ring-[#056F69]/25 sm:mt-2 sm:max-w-[220px] sm:text-[16px]"
+                />
+              </div>
+            </div>
+
+            <div className="flex min-w-0 flex-col gap-4 lg:pt-0.5">
+              <div>
+                <label htmlFor="mailing-email" className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.1em] text-[#55525A] sm:mb-2 sm:text-[11px]">
+                  Почта получателей
+                </label>
+                <div className="flex h-[32px] items-center rounded-full border-2 border-[#17C7BE] bg-[#FBFBFB] pl-3 pr-1 shadow-sm sm:h-[34px]">
+                  <input
+                    id="mailing-email"
+                    type="email"
+                    value={emailInput}
+                    onChange={(e) => setEmailInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === "," || e.key === ";") {
+                        e.preventDefault();
+                        commitEmails();
+                      }
+                    }}
+                    onBlur={commitEmails}
+                    placeholder="Введите почту"
+                    className="w-full min-w-0 bg-transparent text-[14px] font-normal text-[#0A7772] placeholder:text-[#BCBAC4] focus:outline-none sm:text-[15px]"
+                  />
+                  <button
+                    type="button"
+                    onClick={commitEmails}
+                    aria-label="Добавить почту"
+                    className="ml-1.5 flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-[6px] bg-[#056F69] text-white transition hover:brightness-110 sm:h-[28px] sm:w-[28px]"
+                  >
+                    <Check className="h-3 w-3" strokeWidth={2.5} />
+                  </button>
+                </div>
+              </div>
+
+              <section>
+                <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.1em] text-[#55525A] sm:mb-2 sm:text-[11px]">Добавленные почты</label>
+                <div className="flex max-h-[132px] flex-col gap-1.5 overflow-y-auto pr-0.5 sm:max-h-[144px]">
+                  {emails.length === 0 ? (
+                    <p className="rounded-[10px] border border-dashed border-[#c8d5d4] bg-white/80 px-2.5 py-2.5 text-center text-[12px] text-[#8C8991] sm:px-3 sm:py-2.5 sm:text-[13px]">
+                      Добавьте один или несколько адресов.
+                    </p>
+                  ) : (
+                    emails.map((email, idx) => (
+                      <div
+                        key={`${email}-${idx}`}
+                        className="flex h-[28px] items-center rounded-full border border-[#B8B5BE] bg-[#F5F5F8] pl-1.5 pr-2 sm:h-[30px] sm:pl-2 sm:pr-2.5"
+                      >
+                        <button
+                          type="button"
+                          aria-label={`Удалить ${email}`}
+                          onClick={() => setEmails((prev) => prev.filter((x) => x !== email))}
+                          className="mr-1.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[#8C8991] transition hover:bg-[#fde8e8] hover:text-[#a02828] sm:mr-2"
+                        >
+                          <X className="h-3 w-3" strokeWidth={2.2} />
+                        </button>
+                        <span className="min-w-0 flex-1 truncate text-[13px] font-normal text-[#0A7772] sm:text-[14px]">{email}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </section>
+
+              <section>
+                <div className="mb-1.5 flex items-baseline justify-between gap-2 sm:mb-2">
+                  <label htmlFor="mailing-comment" className="text-[14px] font-semibold leading-none text-[#1E1A1E] sm:text-[15px]">
+                    Комментарий
+                  </label>
+                  <span
+                    className={`shrink-0 text-[11px] tabular-nums sm:text-[12px] ${
+                      comment.length >= MAILING_COMMENT_MAX_LENGTH
+                        ? "font-medium text-[#a02828]"
+                        : comment.length > MAILING_COMMENT_MAX_LENGTH * 0.9
+                        ? "text-[#8a6a2c]"
+                        : "text-[#8C8991]"
+                    }`}
+                  >
+                    {comment.length} / {MAILING_COMMENT_MAX_LENGTH}
+                  </span>
+                </div>
+                <textarea
+                  id="mailing-comment"
+                  value={comment}
+                  maxLength={MAILING_COMMENT_MAX_LENGTH}
+                  onChange={(e) =>
+                    setComment(e.target.value.slice(0, MAILING_COMMENT_MAX_LENGTH))
+                  }
+                  placeholder="Введите комментарий"
+                  rows={4}
+                  className="min-h-[96px] max-h-[200px] w-full resize-y overflow-y-auto rounded-[14px] border border-[#BDBAC3] bg-[#FBFBFB] px-3 py-2 text-[13px] font-normal leading-relaxed text-[#0A7772] placeholder:text-[#BCBAC4] focus:outline-none focus:ring-2 focus:ring-[#17C7BE]/30 sm:min-h-[112px] sm:max-h-[220px] sm:rounded-[16px] sm:px-3.5 sm:py-2.5 sm:text-[14px]"
+                />
+              </section>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5 border-t border-[#d9d6de]/80 pt-2.5 sm:gap-2 sm:pt-3">
+            <span className="w-full text-[10px] font-semibold uppercase tracking-[0.08em] text-[#55525A] sm:w-auto sm:pr-1.5 sm:text-[11px]">
+              Повтор
+            </span>
+            {(["none", "day", "week", "month"] as MailingRepeat[]).map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => setRepeat(opt)}
+                className={`rounded-full border px-2.5 py-1 text-[11px] font-normal transition sm:px-3 sm:py-1.5 sm:text-[12px] ${
+                  repeat === opt
+                    ? "border-[#056F69] bg-[#DDEAEA] text-[#056F69]"
+                    : "border-[#C3D4D3] bg-white text-[#55525A] hover:bg-[#f4fbfb]"
+                }`}
+              >
+                {repeatLabel(opt)}
+              </button>
+            ))}
+          </div>
+
+          {formError || successText ? (
+            <p
+              className={`rounded-[10px] border px-3 py-2 text-[13px] leading-relaxed sm:px-3.5 sm:py-2.5 sm:text-[14px] ${
+                formError
+                  ? "border-[#e8b4b4] bg-[#fff5f5] text-[#8a2c2c]"
+                  : "border-[#b8e0dc] bg-[#eef9f7] text-[#056F69]"
+              }`}
+            >
+              {formError ?? successText}
+            </p>
+          ) : null}
+
+          <div className="pt-0.5">
+            <button
+              type="button"
+              onClick={() => void submit()}
+              disabled={submitting || messageId == null}
+              className="flex h-[40px] w-full items-center justify-center rounded-[10px] bg-[#056F69] text-center text-[15px] font-normal text-white shadow-[0_6px_14px_rgba(0,0,0,0.16)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-55 sm:h-[44px] sm:rounded-[12px] sm:text-[16px]"
+            >
+              {submitting ? "Отправляю..." : "Отправить"}
+            </button>
+          </div>
+        </div>
+        </section>
+      </div>
+    </div>
+  );
+}
 function ChatGroup({
   chatId,
   title,

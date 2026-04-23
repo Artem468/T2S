@@ -12,7 +12,12 @@ class EmailMailingCreateSerializer(serializers.Serializer):
         allow_empty=False,
         write_only=True,
     )
-    comment = serializers.CharField(required=False, allow_blank=True, default="")
+    comment = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+        max_length=2000,
+    )
     repeat = serializers.ChoiceField(choices=MailingRepeat.choices)
     message_id = serializers.IntegerField(min_value=1)
 

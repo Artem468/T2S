@@ -21,6 +21,25 @@ export type ApiMessageDetail = {
 };
 
 export type ExportFormat = "xlsx" | "docx" | "pdf";
+export type MailingRepeat = "none" | "day" | "week" | "month";
+
+export const MAILING_COMMENT_MAX_LENGTH = 2000;
+
+export type CreateMailingPayload = {
+  message_id: number;
+  scheduled_at: string;
+  repeat: MailingRepeat;
+  emails: string[];
+  comment?: string;
+};
+
+export type CreateMailingResponse = {
+  id: number;
+  scheduled_at: string;
+  repeat: MailingRepeat;
+  recipients_count: number;
+  periodic_task_name: string;
+};
 
 export type ExportFile = {
   blob: Blob;
@@ -32,6 +51,7 @@ type UpdateChatPayload = {
 };
 
 const CHAT_API_BASE = "/api/chats";
+const USERS_API_BASE = "/api/users";
 
 function trimSlash(value: string): string {
   return value.endsWith("/") ? value.slice(0, -1) : value;
@@ -55,6 +75,25 @@ function buildUrl(path: string): string {
   return `${base}/${normalizedPath}/`;
 }
 
+function buildUsersUrl(path: string): string {
+  const base = `${getBackendOrigin()}${USERS_API_BASE}`;
+  const normalizedPath = path.replace(/^\/+/, "").replace(/\/+$/, "");
+  if (!normalizedPath) return `${base}/`;
+  return `${base}/${normalizedPath}/`;
+}
+
+async function requestUsersJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(buildUsersUrl(path), {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(init?.headers ?? {}),
+    },
+    cache: "no-store",
+  });
+  return readJsonOrThrow<T>(response);
+}
+
 async function readJsonOrThrow<T>(response: Response): Promise<T> {
   const bodyText = await response.text();
   let parsed: unknown = null;
@@ -68,10 +107,42 @@ async function readJsonOrThrow<T>(response: Response): Promise<T> {
   }
 
   if (!response.ok) {
-    const message =
-      typeof parsed === "object" && parsed !== null && "error" in parsed
-        ? String((parsed as { error?: unknown }).error ?? `HTTP ${response.status}`)
-        : `HTTP ${response.status}`;
+    const stringifyIssue = (value: unknown): string => {
+      if (value == null) return "";
+      if (typeof value === "string") return value;
+      if (typeof value === "number" || typeof value === "boolean") return String(value);
+      if (Array.isArray(value)) {
+        return value.map((item) => stringifyIssue(item)).filter(Boolean).join(", ");
+      }
+      if (typeof value === "object") {
+        return Object.entries(value as Record<string, unknown>)
+          .map(([key, val]) => {
+            const formatted = stringifyIssue(val);
+            return formatted ? `${key}: ${formatted}` : "";
+          })
+          .filter(Boolean)
+          .join("; ");
+      }
+      return "";
+    };
+
+    const message = (() => {
+      if (typeof parsed === "object" && parsed !== null) {
+        const obj = parsed as Record<string, unknown>;
+        if ("error" in obj && obj.error != null) {
+          const text = stringifyIssue(obj.error);
+          if (text) return text;
+        }
+        if ("detail" in obj && obj.detail != null) {
+          const text = stringifyIssue(obj.detail);
+          if (text) return text;
+        }
+        const fieldErrors = stringifyIssue(obj);
+        if (fieldErrors) return fieldErrors;
+      }
+      if (typeof parsed === "string" && parsed.trim()) return parsed.trim();
+      return `HTTP ${response.status}`;
+    })();
     throw new Error(message);
   }
 
@@ -152,4 +223,11 @@ export async function exportMessageFile(messageId: number, fmt: ExportFormat): P
   const blob = await response.blob();
   const fileName = inferFileName(response.headers.get("Content-Disposition"), `message_${messageId}.${fmt}`);
   return { blob, fileName };
+}
+
+export async function createMailing(payload: CreateMailingPayload): Promise<CreateMailingResponse> {
+  return requestUsersJson<CreateMailingResponse>("mailings", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
