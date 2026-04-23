@@ -10,6 +10,7 @@ dependencies = [
     "channels>=4.3.2",
     "channels-redis>=4.3.0",
     "django>=5.2.8",
+    "django-celery-beat>=2.8.1",
     "django-cors-headers>=4.9.0",
     "django-unfold>=0.69.0",
     "djangorestframework>=3.16.1",

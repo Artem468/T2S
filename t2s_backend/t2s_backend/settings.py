@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     "drf_spectacular",
     "corsheaders",
     "channels",
+    "django_celery_beat",
     "unfold",
     "unfold.contrib.filters",
     "unfold.contrib.forms",
@@ -204,6 +205,20 @@ CELERY_TASK_TRACK_STARTED = os.getenv("CELERY_TASK_TRACK_STARTED", "True").lower
     "1",
 )
 CELERY_TIMEZONE = os.getenv("CELERY_TIMEZONE", "UTC")
+CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
+
+EMAIL_BACKEND = os.getenv(
+    "EMAIL_BACKEND",
+    "django.core.mail.backends.smtp.EmailBackend",
+)
+EMAIL_HOST = os.getenv("EMAIL_HOST", "")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True").lower() in ("true", "1")
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER or "no-reply@t2s.local")
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "http://localhost")
+MAILING_EMAIL_SUBJECT = os.getenv("MAILING_EMAIL_SUBJECT", "Рассылка T2S")
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators

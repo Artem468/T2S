@@ -56,6 +56,27 @@ services:
     networks:
       - app-network
 
+  celery-beat:
+    build:
+      context: ./t2s_backend
+      dockerfile: Dockerfile
+    container_name: celery-beat
+    command: celery -A t2s_backend beat --loglevel=info
+    working_dir: /app
+    volumes:
+      - static_volume:/app/static
+      - ./incity.db:/app/incity.db:ro
+    env_file:
+      - .env
+    depends_on:
+      t2s-django:
+        condition: service_started
+      redis:
+        condition: service_started
+    restart: always
+    networks:
+      - app-network
+
   redis:
     container_name: redis
     image: redis:7-alpine
