@@ -1,0 +1,6 @@
+# Дополнение к docker-compose.yml: доступ Ollama к GPU NVIDIA.
+# Подключение: docker compose -f docker-compose.yml -f docker-compose.gpu.yml …
+# На машине без GPU / без toolkit не используйте этот файл — будет ошибка старта.
+services:
+  ollama-service:
+    gpus: all

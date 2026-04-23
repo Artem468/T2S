@@ -46,3 +46,24 @@ body {
   background: #006b62;
   border-radius: 8px;
 }
+
+@keyframes t2sPhraseIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.t2s-phrase-in {
+  animation: t2sPhraseIn 0.45s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t2s-phrase-in {
+    animation: none;
+  }
+}

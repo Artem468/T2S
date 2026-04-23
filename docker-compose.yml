@@ -1,4 +1,5 @@
 services:
+  # GPU: docker-compose.gpu.yml; Windows: scripts\docker-compose-with-gpu.cmd или .ps1; Linux/macOS: .sh
   ollama-service:
     image: ollama/ollama:latest
     container_name: ollama_sql
