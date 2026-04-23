@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatDashboardView, type DashboardPhase } from "@/components/chat/ChatDashboardView";
 import { buildBarDataFromRows, type BarDatum } from "@/components/chat/chartFromRows";
 import {
+  createMailing,
   createChat,
   deleteChat,
   exportMessageFile,
@@ -15,6 +16,7 @@ import {
   type ApiChat,
   type ExportFormat,
   type ApiHistoryMessage,
+  type CreateMailingPayload,
 } from "@/lib/api";
 import { getChatWebSocketUrl } from "@/lib/ws";
 
@@ -512,6 +514,17 @@ export function ChatWorkspace() {
     [activeMessageId, chatId, mergeChatHistory]
   );
 
+  const handleCreateMailing = useCallback(async (payload: CreateMailingPayload) => {
+    try {
+      await createMailing(payload);
+      setErrorMessage(null);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Не удалось создать рассылку";
+      setErrorMessage(msg);
+      throw e;
+    }
+  }, []);
+
   return (
     <ChatDashboardView
       phase={phase}
@@ -546,6 +559,8 @@ export function ChatWorkspace() {
       onCopyLeafSql={handleCopyLeafSql}
       canDownload={chatId != null}
       onDownloadFormat={handleDownload}
+      mailingMessageId={activeMessageId}
+      onCreateMailing={handleCreateMailing}
     />
   );
 }
