@@ -9,15 +9,19 @@ RUN pnpm install --frozen-lockfile
 
 COPY . .
 
-RUN npm run build
+RUN pnpm build
 
 FROM node:20-alpine AS runner
 
 RUN addgroup -S nextjs && adduser -S nextjs -G nextjs
 
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
 
 COPY --from=builder /app/package*.json ./
