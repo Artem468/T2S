@@ -262,6 +262,7 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "stable-code:3b")
 # Таймаут чтения ответа /api/generate (сек). 180 часто мало при загруженной модели; два вызова подряд — см. Celery soft_time_limit.
 OLLAMA_REQUEST_TIMEOUT = int(os.getenv("OLLAMA_REQUEST_TIMEOUT", "300"))
 OLLAMA_CONNECT_TIMEOUT = int(os.getenv("OLLAMA_CONNECT_TIMEOUT", "15"))
+TEXT2SQL_MAX_RETRIES = int(os.getenv("TEXT2SQL_MAX_RETRIES", "2"))
 
 DATA_UPLOAD_MAX_MEMORY_SIZE = 104857600
 FILE_UPLOAD_MAX_MEMORY_SIZE = 104857600

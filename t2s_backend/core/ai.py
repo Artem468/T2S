@@ -1,6 +1,6 @@
-import re
+﻿import re
 
-from asgiref.sync import sync_to_async
+from asgiref.sync import async_to_sync
 from django.conf import settings
 from openai import OpenAI
 from openai.types.chat import ChatCompletionMessageParam
@@ -8,40 +8,64 @@ from openai.types.chat import ChatCompletionMessageParam
 from core.utils.db_inspector import schema_to_string
 
 
-def _build_sql_prompt(question: str) -> str:
-    # Предполагается, что schema_to_string выдает чистый DDL (CREATE TABLE...)
-    schema = sync_to_async(schema_to_string)(settings.INSPECTOR.get_full_schema())
+def _get_schema_ddl() -> str:
+    raw_schema = async_to_sync(settings.INSPECTOR.get_full_schema)()
+    return schema_to_string(raw_schema)
 
-    return """
-    Ты — узкоспециализированный генератор SQL для SQLite 3. Твоя задача: перевести вопрос в один запрос, используя ТОЛЬКО предоставленную схему.
 
-    ### СТРОГИЕ ОГРАНИЧЕНИЯ (REJECTION CRITERIA):
-    1. ИСПОЛЬЗУЙ ТОЛЬКО ТАБЛИЦЫ И КОЛОНКИ, УКАЗАННЫЕ В СЕКЦИИ "СХЕМА".
-    2. ЕСЛИ В СХЕМЕ НЕТ НУЖНОГО ПОЛЯ: Не пытайся угадать или заменить его на похожее (например, если нет 'user_id', не используй 'id' и наоборот). В этом случае верни: SELECT 1 WHERE 0;
-    3. НИКАКИХ ГАЛЛЮЦИНАЦИЙ: Если вопрос пользователя подразумевает данные, которых нет в таблицах — не выдумывай их.
-    4. ФОРМАТ ОТВЕТА: Только чистый текст SQL. Без кавычек ```, без пояснений, без комментариев.
+def _build_sql_prompt(
+    question: str,
+    schema_ddl: str,
+    previous_error: str | None = None,
+    failed_sql: str | None = None,
+) -> str:
+    retry_block = ""
+    if previous_error:
+        retry_block = (
+            "\nPREVIOUS_ATTEMPT_FAILED\n"
+            f"Failed SQL:\n{failed_sql or '<empty>'}\n\n"
+            f"Execution error:\n{previous_error}\n\n"
+            "Fix the SQL according to this exact error and schema. "
+            "Do not reuse invalid table names, columns or aliases.\n"
+        )
 
-    ### ТЕХНИЧЕСКИЕ ТРЕБОВАНИЯ:
-    • Один SELECT запрос, заканчивающийся на «;».
-    • Для связи таблиц используй FOREIGN KEY из схемы. Делай явные INNER/LEFT JOIN.
-    • КАЖДОМУ столбцу дай осмысленный русский алиас в двойных кавычках: AS "Название".
-    • Для числовых данных (деньги, метры) указывай единицы в алиасе: AS "Сумма, руб.".
-    • Округляй денежные значения: ROUND(col, 2).
-    • Лимит выдачи: LIMIT 500, если в вопросе не указано иное.
+    return (
+        "You are a strict SQLite Text-to-SQL generator.\n"
+        "Return exactly one valid SQL SELECT query and nothing else.\n\n"
+        "HARD RULES:\n"
+        "1) Use ONLY tables/columns that exist in SCHEMA.\n"
+        "2) Never invent table names, column names, or joins.\n"
+        "3) If required data does not exist in SCHEMA, return exactly: SELECT 1 WHERE 0;\n"
+        "4) Output format: plain SQL text only, no markdown, no comments, no explanations.\n"
+        "5) One statement only, ending with semicolon.\n"
+        "6) Read-only query: SELECT/WITH only. No INSERT/UPDATE/DELETE/DDL/PRAGMA.\n"
+        "7) If user does not request a limit, add LIMIT 500.\n\n"
+        "Join rules:\n"
+        "- Join tables only via keys present in SCHEMA.\n"
+        "- Prefer explicit JOIN ... ON ... syntax.\n\n"
+        "SCHEMA:\n"
+        f"{schema_ddl}\n\n"
+        f"{retry_block}"
+        "USER QUESTION:\n"
+        f"{question}\n\n"
+        "SQL:"
+    )
 
-    ### СПЕЦИФИКА SQLITE:
-    • Даты: используй date(), datetime(), strftime().
-    • Разница во времени (секунды): (julianday(t2) - julianday(t1)) * 86400.
-    • Типы: учитывай, что BOOLEAN в SQLite — это 0 или 1.
 
-    ### СХЕМА БАЗЫ ДАННЫХ (ЕДИНСТВЕННЫЙ ИСТОЧНИК ПРАВДЫ):
-    {schema}
+def _extract_sql(raw: str | None) -> str:
+    text = (raw or "").strip()
+    if not text:
+        return "SELECT 1 WHERE 0;"
 
-    ### ЗАДАЧА:
-    Вопрос: {question}
-    Сгенерируй SQL, используя только вышеуказанные названия колонок и таблиц. Если колонки нет в схеме — не выполняй запрос.
+    code_block = re.search(r"```(?:sql)?\s*([\s\S]*?)```", text, flags=re.IGNORECASE)
+    if code_block:
+        text = code_block.group(1).strip()
 
-    Ответ:""".format(schema=schema, question=question)
+    text = text.strip().strip("`")
+    first_stmt = text.split(";")[0].strip()
+    if not first_stmt:
+        return "SELECT 1 WHERE 0;"
+    return f"{first_stmt};"
 
 
 def _extract_plain_description(raw: str) -> str:
@@ -60,34 +84,32 @@ def _extract_plain_description(raw: str) -> str:
     return text[:4000]
 
 
-def generate_sql(question: str) -> str:
-    prompt = _build_sql_prompt(question)
+def generate_sql(
+    question: str,
+    previous_error: str | None = None,
+    failed_sql: str | None = None,
+) -> str:
+    schema_ddl = _get_schema_ddl()
+    prompt = _build_sql_prompt(
+        question=question,
+        schema_ddl=schema_ddl,
+        previous_error=previous_error,
+        failed_sql=failed_sql,
+    )
     data = __process_request(prompt)
-    return data
+    return _extract_sql(data)
 
 
 def generate_description(sql: str, user_question: str = "") -> str:
     q = (user_question or "").strip()
-    q_block = (
-        f"Исходный вопрос пользователя (объяснение должно отвечать ИМЕННО на него, а не про SQL вообще):\n«{q}»\n\n"
-        if q
-        else "Вопрос пользователя не передан — опиши только смысл SQL ниже.\n\n"
-    )
+    q_block = f"User question: {q}\n\n" if q else "User question was not provided.\n\n"
     prompt = (
-        "Ты редактор отчёта на русском языке. Твоя задача — в связной речи объяснить: "
-        "как приведённый ниже SQL связан с вопросом пользователя и что именно увидит человек в таблице результата.\n\n"
-        "ОБЯЗАТЕЛЬНО: опирайся на формулировку вопроса (слова «случайный», «10», «пользователи» и т.д.) и на таблицы/поля в SQL. "
-        "Пиши так, будто отвечаешь автору вопроса, а не учишь SQL с нуля.\n\n"
-        "КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО (такой текст — провальный ответ, не пиши его вообще):\n"
-        "— перечисление «ключевых слов» SQL (SELECT, WHERE, FROM, AND, LIKE, DISTINCT…);\n"
-        "— фразы вроде «в SQL вам нужно понять», «работать с базой данных вам нужно знать», «на данный момент», «запросы:»;\n"
-        "— общий курс SQL, не связанный с этим запросом и этим вопросом;\n"
-        "— дословное повторение всего SQL; куски SQL можно упомянуть одним коротким оборотом при необходимости.\n\n"
-        "ЖЁСТКИЙ ЛИМИТ: не больше четырёх коротких предложений, не больше 450 символов, один абзац.\n\n"
-        "Запрещено также: нумерация 1. 2); маркеры списка; markdown и ```; ссылки; английские абзацы.\n\n"
+        "Write a short Russian explanation (2-4 sentences) for business users. "
+        "Explain what this SQL returns in the context of the user question. "
+        "No markdown, no SQL tutorial, no bullet points.\n\n"
         f"{q_block}"
         f"SQL:\n{sql}\n\n"
-        "Ответ (только русский текст, только про этот вопрос и этот запрос):"
+        "Answer in Russian:"
     )
     data = __process_request(prompt)
     out = _extract_plain_description(data)
@@ -99,23 +121,23 @@ def __process_request(prompt: str) -> str | None:
 
     client = OpenAI(
         api_key=settings.AI_API_KEY,
-        base_url=url
+        base_url=url,
     )
 
     messages: list[ChatCompletionMessageParam] = [
         {
             "role": "user",
-            "content": prompt
+            "content": prompt,
         }
     ]
 
     response = client.chat.completions.create(
         model="Qwen/Qwen3-Coder-Next",
         max_tokens=2500,
-        temperature=0.5,
+        temperature=0.1,
         presence_penalty=0,
-        top_p=0.95,
-        messages=messages
+        top_p=0.9,
+        messages=messages,
     )
 
     return response.choices[0].message.content
