@@ -1,87 +1,50 @@
 import re
 
+from asgiref.sync import sync_to_async
 from django.conf import settings
 from openai import OpenAI
 from openai.types.chat import ChatCompletionMessageParam
 
-from core.utils import normalize_llm_sql
+from core.utils.db_inspector import schema_to_string
 
 
 def _build_sql_prompt(question: str) -> str:
-    return (
-        "Ты генератор одного исполняемого запроса SQLite 3. Ответ — ТОЛЬКО текст SQL, одна инструкция, "
-        "без markdown, без ```, без комментариев «--», без преамбулы «Вот запрос», без второго запроса после «;».\n\n"
-        "Обязательно:\n"
-        "• Только SELECT или WITH … SELECT. Не INSERT/UPDATE/DELETE/PRAGMA/ATTACH.\n"
-        "• Ровно одна завершающая «;» в конце. Внутри строк в одинарных кавычках не используй «;».\n"
-        "• Скобки сбалансированы: после COUNT( … ), SUM( … ), AVG( … ) одна закрывающая «)»; "
-        "для COUNT(DISTINCT x) шаблон ровно «COUNT(DISTINCT x)», без «))» перед FROM/WHERE/GROUP BY/HAVING/ORDER BY/LIMIT.\n"
-        "• Нет лишней запятой перед FROM/WHERE/GROUP BY (ошибка «near FROM»).\n"
-        "• Имена таблиц и колонок только из схемы ниже; не выдумывай таблицы и поля.\n"
-        "• Предпочитай явные JOIN (INNER JOIN … ON …), избегай лишних декартовых «FROM a, b» без условия.\n"
-        "• Если по смыслу данных в схеме нет или запрос невыразим — верни ровно: SELECT 1 WHERE 0;\n\n"
-        "Как результат попадёт в интерфейс (учитывай при выборе столбцов):\n"
-        "• Каждая строка результата — строка таблицы на экране; имена столбцов — заголовки. Давай понятные алиасы (AS city_name, AS orders_cnt, AS revenue …).\n"
-        "• График строится по первому столбцу, где у всех строк есть числовое значение (число или строка-число). "
-        "Для осмысленной диаграммы по суммам/количествам добавь такой столбец; по возможности дай несколько строк с группировкой "
-        "(например SELECT c.name AS label, SUM(o.price_order_local) AS value … GROUP BY c.city_id ORDER BY value DESC LIMIT 20), "
-        "а не одну безликую агрегатную строку без подписей, если вопрос про сравнение или рейтинг.\n"
-        "• Если вопрос не требует всех строк, ограничь выборку LIMIT с разумным верхом (например до 200–500 строк), чтобы таблица и график оставались читаемыми.\n\n"
-        "Подсказки по данным:\n"
-        "• cities: city_id, name. orders: order_id, city_id, user_id, … tenders: tender_id, order_id, …\n"
-        "• Связь заказ–город: orders.city_id = cities.city_id. Связь тендер–заказ: tenders.order_id = orders.order_id.\n"
-        "• Время: строки в формате ISO; разница секунд: (julianday(t2) - julianday(t1)) * 86400.\n\n"
-        "Схема (единственный источник колонок):\n"
-        "CREATE TABLE IF NOT EXISTS cities (\n"
-        "  city_id INTEGER PRIMARY KEY,\n"
-        "  name TEXT\n"
-        ");\n"
-        "CREATE TABLE IF NOT EXISTS orders (\n"
-        "  order_id TEXT PRIMARY KEY, city_id INTEGER, user_id TEXT, driver_id TEXT,\n"
-        "  status_order TEXT, order_timestamp TEXT, order_modified_local TEXT,\n"
-        "  distance_in_meters INTEGER, duration_in_seconds INTEGER,\n"
-        "  price_order_local REAL, price_start_local REAL\n"
-        ");\n"
-        "CREATE TABLE IF NOT EXISTS tenders (\n"
-        "  tender_id TEXT PRIMARY KEY, order_id TEXT, status_tender TEXT,\n"
-        "  tender_timestamp TEXT, driveraccept_timestamp TEXT, driverarrived_timestamp TEXT,\n"
-        "  driverstarttheride_timestamp TEXT, driverdone_timestamp TEXT,\n"
-        "  clientcancel_timestamp TEXT, drivercancel_timestamp TEXT,\n"
-        "  cancel_before_accept_local TEXT, price_tender_local REAL, offset_hours INTEGER,\n"
-        "  FOREIGN KEY (order_id) REFERENCES orders (order_id)\n"
-        ");\n\n"
-        f"Вопрос пользователя:\n{question}\n\nОтвет (только SQL, одна инструкция):"
-    )
+    # Предполагается, что schema_to_string выдает чистый DDL (CREATE TABLE...)
+    schema = sync_to_async(schema_to_string)(settings.INSPECTOR.get_full_schema())
 
+    return """
+    Ты — узкоспециализированный генератор SQL для SQLite 3. Твоя задача: перевести вопрос в один запрос, используя ТОЛЬКО предоставленную схему.
 
-def extract_sql(raw: str) -> str:
-    text = (raw or "").strip()
-    fence = re.search(r"```(?:sql)?\s*([\s\S]*?)```", text, re.IGNORECASE)
-    if fence:
-        text = fence.group(1).strip()
-    low = text.lower()
-    pos = -1
-    for key in ("select", "with"):
-        i = low.find(key)
-        if i != -1 and (pos == -1 or i < pos):
-            pos = i
-    if pos == -1:
-        return "SELECT 1 WHERE 0;"
-    sql = text[pos:].strip()
-    if "\n\n" in sql:
-        sql = sql.split("\n\n")[0].strip()
-    c = sql.find(";")
-    if c != -1 and c < len(sql) - 1:
-        tail = sql[c + 1 :].strip()
-        if tail and not tail.startswith("--"):
-            sql = sql[: c + 1].strip()
-    if not sql.rstrip().endswith(";"):
-        sql = sql.rstrip() + ";"
-    return sql
+    ### СТРОГИЕ ОГРАНИЧЕНИЯ (REJECTION CRITERIA):
+    1. ИСПОЛЬЗУЙ ТОЛЬКО ТАБЛИЦЫ И КОЛОНКИ, УКАЗАННЫЕ В СЕКЦИИ "СХЕМА".
+    2. ЕСЛИ В СХЕМЕ НЕТ НУЖНОГО ПОЛЯ: Не пытайся угадать или заменить его на похожее (например, если нет 'user_id', не используй 'id' и наоборот). В этом случае верни: SELECT 1 WHERE 0;
+    3. НИКАКИХ ГАЛЛЮЦИНАЦИЙ: Если вопрос пользователя подразумевает данные, которых нет в таблицах — не выдумывай их.
+    4. ФОРМАТ ОТВЕТА: Только чистый текст SQL. Без кавычек ```, без пояснений, без комментариев.
+
+    ### ТЕХНИЧЕСКИЕ ТРЕБОВАНИЯ:
+    • Один SELECT запрос, заканчивающийся на «;».
+    • Для связи таблиц используй FOREIGN KEY из схемы. Делай явные INNER/LEFT JOIN.
+    • КАЖДОМУ столбцу дай осмысленный русский алиас в двойных кавычках: AS "Название".
+    • Для числовых данных (деньги, метры) указывай единицы в алиасе: AS "Сумма, руб.".
+    • Округляй денежные значения: ROUND(col, 2).
+    • Лимит выдачи: LIMIT 500, если в вопросе не указано иное.
+
+    ### СПЕЦИФИКА SQLITE:
+    • Даты: используй date(), datetime(), strftime().
+    • Разница во времени (секунды): (julianday(t2) - julianday(t1)) * 86400.
+    • Типы: учитывай, что BOOLEAN в SQLite — это 0 или 1.
+
+    ### СХЕМА БАЗЫ ДАННЫХ (ЕДИНСТВЕННЫЙ ИСТОЧНИК ПРАВДЫ):
+    {schema}
+
+    ### ЗАДАЧА:
+    Вопрос: {question}
+    Сгенерируй SQL, используя только вышеуказанные названия колонок и таблиц. Если колонки нет в схеме — не выполняй запрос.
+
+    Ответ:""".format(schema=schema, question=question)
 
 
 def _extract_plain_description(raw: str) -> str:
-    """Текст объяснения SQL без extract_sql (тот вырезал бы SELECT и «ронял» смысл)."""
     text = (raw or "").strip()
     if not text:
         return ""
@@ -90,7 +53,7 @@ def _extract_plain_description(raw: str) -> str:
         inner = m.group(1).strip()
         low = inner.lower()
         if low.startswith("select") or low.startswith("with "):
-            text = (text[: m.start()] + text[m.end() :]).strip()
+            text = (text[: m.start()] + text[m.end():]).strip()
         else:
             return inner[:4000]
     text = re.sub(r"\s+", " ", text).strip()
@@ -100,7 +63,7 @@ def _extract_plain_description(raw: str) -> str:
 def generate_sql(question: str) -> str:
     prompt = _build_sql_prompt(question)
     data = __process_request(prompt)
-    return normalize_llm_sql(extract_sql(data))
+    return data
 
 
 def generate_description(sql: str, user_question: str = "") -> str:

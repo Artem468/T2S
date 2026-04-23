@@ -17,7 +17,7 @@ from rest_framework.views import APIView
 
 from core.models import Chat, Role, Message
 from core.serializers import ChatSerializer, MessagePreviewSerializer, MessageDetailResponseSerializer
-from core.utils import fetch_data
+from core.utils.fetch_data import fetch_data
 
 
 @extend_schema(tags=['Чаты'])

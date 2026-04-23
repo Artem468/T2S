@@ -14,6 +14,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
+from core.utils.db_inspector import DatabaseInspector
+
 load_dotenv()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -44,6 +46,9 @@ CSRF_TRUSTED_ORIGINS = [
 
 engine = create_async_engine("sqlite+aiosqlite:///incity.db")
 ASYNC_SESSION = async_sessionmaker(engine, expire_on_commit=False)
+
+INSPECTOR = DatabaseInspector(engine)
+
 
 AI_API_KEY = os.getenv("AI_API_KEY")
 

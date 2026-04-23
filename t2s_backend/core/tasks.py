@@ -19,7 +19,6 @@ def _notify_error(chat_id: int, text: str) -> None:
 
 
 @shared_task(
-    # Два последовательных вызова Ollama; лимит > 2 * OLLAMA_REQUEST_TIMEOUT (см. settings)
     soft_time_limit=700,
     time_limit=780,
 )
