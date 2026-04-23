@@ -40,6 +40,8 @@ def _build_sql_prompt(
         "5) One statement only, ending with semicolon.\n"
         "6) Read-only query: SELECT/WITH only. No INSERT/UPDATE/DELETE/DDL/PRAGMA.\n"
         "7) If user does not request a limit, add LIMIT 500.\n\n"
+        "8) Every selected expression MUST have a Russian alias in double quotes using AS.\n"
+        "   Example: table.col AS \"Название\", SUM(x) AS \"Сумма\".\n\n"
         "Join rules:\n"
         "- Join tables only via keys present in SCHEMA.\n"
         "- Prefer explicit JOIN ... ON ... syntax.\n\n"
