@@ -2,16 +2,18 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatDashboardView, type DashboardPhase } from "@/components/chat/ChatDashboardView";
-import { normalizeBarPercents, pickNumericSeries, pieAngleFromRatio, pieTwoParts } from "@/components/chat/chartFromRows";
+import { buildBarDataFromRows, type BarDatum } from "@/components/chat/chartFromRows";
 import {
   createChat,
   deleteChat,
+  exportMessageFile,
   fetchChat,
   fetchChatHistory,
   fetchChats,
   fetchMessageDetail,
   updateChat,
   type ApiChat,
+  type ExportFormat,
   type ApiHistoryMessage,
 } from "@/lib/api";
 import { getChatWebSocketUrl } from "@/lib/ws";
@@ -55,9 +57,7 @@ export function ChatWorkspace() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [wsChart, setWsChart] = useState<NonNullable<WsPayload["chart"]> | null>(null);
   const [chats, setChats] = useState<ApiChat[]>([]);
-  /** История USER-сообщений по id чата (хронологически: старые → новые) */
   const [chatHistories, setChatHistories] = useState<Record<number, ApiHistoryMessage[]>>({});
-  /** Какой чат в сайдбаре раскрыт и показывает подчаты */
   const [expandedChatId, setExpandedChatId] = useState<number | null>(null);
   const [selectedQueryMessageId, setSelectedQueryMessageId] = useState<number | null>(null);
   const [newChatPending, setNewChatPending] = useState(false);
@@ -147,7 +147,6 @@ export function ChatWorkspace() {
         setExpandedChatId(data.chat_id);
         void mergeChatHistory(data.chat_id);
       }
-      // Бэкенд: text = SQL, description = русское объяснение (не наоборот)
       const sql = typeof data.text === "string" ? data.text : null;
       const narrative = typeof data.description === "string" ? data.description : "";
       setSqlText(sql);
@@ -279,29 +278,28 @@ export function ChatWorkspace() {
   };
 
   const columns = rows[0] ? Object.keys(rows[0]) : [];
-  const nums = pickNumericSeries(rows);
-
-  const barPercents = useMemo(() => {
+  const chartBars = useMemo<BarDatum[]>(() => {
     const bars = wsChart?.bars;
     if (bars?.length) {
-      const vals = bars.map((b) => b.value);
-      return normalizeBarPercents(vals);
+      return bars
+        .filter((b) => typeof b?.value === "number" && Number.isFinite(b.value))
+        .map((b, idx) => ({
+          label: b.label?.trim() || String(idx + 1),
+          value: b.value,
+        }));
     }
-    return normalizeBarPercents(nums.length ? nums : [40, 55, 70, 50, 65]);
-  }, [wsChart, nums]);
-
-  const { pieA, pieB, pieAngle } = useMemo(() => {
-    const segs = wsChart?.pie?.segments;
-    if (segs && segs.length >= 2) {
-      const a = segs[0].value;
-      const b = segs[1].value;
-      return { pieA: a, pieB: b, pieAngle: pieAngleFromRatio(a, b) };
-    }
-    const { a: pa, b: pb } = pieTwoParts(nums.length ? nums : [14, 3]);
-    return { pieA: pa, pieB: pb, pieAngle: pieAngleFromRatio(pa, pb) };
-  }, [wsChart, nums]);
+    return buildBarDataFromRows(rows);
+  }, [rows, wsChart]);
 
   const sendDisabled = phase === "loading" && !errorMessage;
+
+  const activeMessageId = useMemo(() => {
+    if (selectedQueryMessageId != null) return selectedQueryMessageId;
+    if (chatId == null) return null;
+    const list = chatHistories[chatId] ?? [];
+    const last = list[list.length - 1];
+    return last?.id ?? null;
+  }, [chatHistories, chatId, selectedQueryMessageId]);
 
   const sidebarChats = useMemo(
     () =>
@@ -479,6 +477,41 @@ export function ChatWorkspace() {
     }
   }, [clearMainPanel, refreshChats]);
 
+  const handleDownload = useCallback(
+    async (fmt: ExportFormat) => {
+      let messageId = activeMessageId;
+      if (messageId == null && chatId != null) {
+        try {
+          const chronological = await mergeChatHistory(chatId);
+          messageId = chronological[chronological.length - 1]?.id ?? null;
+          if (messageId != null) setSelectedQueryMessageId(messageId);
+        } catch (e) {
+          logWs("resolve message id for export failed", e);
+        }
+      }
+      if (messageId == null) {
+        setErrorMessage("В этом чате пока нет запроса для выгрузки. Выберите подчат или отправьте новый запрос.");
+        return;
+      }
+      try {
+        const { blob, fileName } = await exportMessageFile(messageId, fmt);
+        const href = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = href;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(href);
+        setErrorMessage(null);
+      } catch (e) {
+        logWs("export failed", e);
+        setErrorMessage("Не удалось скачать файл");
+      }
+    },
+    [activeMessageId, chatId, mergeChatHistory]
+  );
+
   return (
     <ChatDashboardView
       phase={phase}
@@ -496,10 +529,7 @@ export function ChatWorkspace() {
       errorMessage={errorMessage}
       hasSql={hasSql}
       hasData={hasData}
-      barPercents={barPercents}
-      pieA={pieA}
-      pieB={pieB}
-      pieAngle={pieAngle}
+      chartBars={chartBars}
       forceTableChartSkeleton={rows.length === 0}
       sidebarChats={sidebarChats}
       onNewChat={handleNewChat}
@@ -514,6 +544,8 @@ export function ChatWorkspace() {
       onDeleteChat={handleDeleteChat}
       onCopyChatSql={handleCopyChatSql}
       onCopyLeafSql={handleCopyLeafSql}
+      canDownload={chatId != null}
+      onDownloadFormat={handleDownload}
     />
   );
 }

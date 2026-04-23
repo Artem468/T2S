@@ -21,10 +21,10 @@ export function getChatWebSocketUrl(): string {
   if (typeof window !== "undefined") {
     const { protocol, hostname, port, host } = window.location;
     if (port === "3000") {
-      return `${toWsProtocol(protocol)}//${hostname}/ws/chat/`;
+      return "ws://127.0.0.1/ws/chat/";
     }
     return `${toWsProtocol(protocol)}//${host}/ws/chat/`;
   }
 
-  return "ws://localhost/ws/chat/";
+  return "ws://127.0.0.1/ws/chat/";
 }
