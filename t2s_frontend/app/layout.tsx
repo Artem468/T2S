@@ -1,12 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
-import { Montserrat } from "next/font/google";
 import "./globals.css";
-
-const montserrat = Montserrat({
-  variable: "--font-montserrat",
-  subsets: ["latin", "cyrillic"],
-});
 
 const futuraRound = localFont({
   src: "../public/afuturaround.ttf",
@@ -24,7 +18,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ru" className={`${montserrat.variable} ${futuraRound.variable} h-full antialiased`}>
+    <html lang="ru" className={`${futuraRound.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );

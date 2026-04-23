@@ -37,6 +37,7 @@ function logWs(...args: unknown[]) {
 export function ChatWorkspace() {
   const wsRef = useRef<WebSocket | null>(null);
   const bootRef = useRef(false);
+  const inFlightRef = useRef(false);
   const chatIdRef = useRef<number | null>(null);
   const expandedChatIdRef = useRef<number | null>(null);
 
@@ -60,6 +61,7 @@ export function ChatWorkspace() {
   const [expandedChatId, setExpandedChatId] = useState<number | null>(null);
   const [selectedQueryMessageId, setSelectedQueryMessageId] = useState<number | null>(null);
   const [newChatPending, setNewChatPending] = useState(false);
+  const [chatSwitchPending, setChatSwitchPending] = useState(false);
 
   const refreshChats = useCallback(async () => {
     try {
@@ -84,7 +86,10 @@ export function ChatWorkspace() {
   }, []);
 
   useEffect(() => {
-    void refreshChats();
+    const id = window.setTimeout(() => {
+      void refreshChats();
+    }, 0);
+    return () => window.clearTimeout(id);
   }, [refreshChats]);
 
   useEffect(() => {
@@ -97,7 +102,10 @@ export function ChatWorkspace() {
 
   useEffect(() => {
     if (chatId == null) return;
-    void mergeChatHistory(chatId);
+    const id = window.setTimeout(() => {
+      void mergeChatHistory(chatId);
+    }, 0);
+    return () => window.clearTimeout(id);
   }, [chatId, mergeChatHistory]);
 
   const clearMainPanel = useCallback(() => {
@@ -120,6 +128,7 @@ export function ChatWorkspace() {
     }
     wsRef.current?.close();
     wsRef.current = null;
+    inFlightRef.current = false;
   }, []);
 
   const applyWsMessage = useCallback((raw: string) => {
@@ -157,6 +166,7 @@ export function ChatWorkspace() {
       queueMicrotask(() => {
         const s = wsRef.current;
         wsRef.current = null;
+        inFlightRef.current = false;
         logWs("closing after data");
         s?.close();
       });
@@ -167,13 +177,19 @@ export function ChatWorkspace() {
       if (typeof data.chat_id === "number") void mergeChatHistory(data.chat_id);
       const s = wsRef.current;
       wsRef.current = null;
+      inFlightRef.current = false;
       s?.close();
     }
   }, [mergeChatHistory, refreshChats]);
 
   const connectAndSend = useCallback(
     (text: string) => {
+      if (inFlightRef.current) {
+        logWs("skip connect: request already in flight");
+        return;
+      }
       closeWs();
+      inFlightRef.current = true;
       setErrorMessage(null);
       setHasSql(false);
       setHasData(false);
@@ -208,11 +224,13 @@ export function ChatWorkspace() {
       ws.onerror = (ev) => {
         logWs("onerror", ev.type, "readyState=", ws.readyState);
         setErrorMessage("Не удалось подключиться к серверу");
+        inFlightRef.current = false;
         wsRef.current = null;
         ws.close();
       };
       ws.onclose = (ev) => {
         logWs("onclose code=", ev.code, "reason=", ev.reason || "(empty)", "wasClean=", ev.wasClean);
+        inFlightRef.current = false;
         if (wsRef.current === ws) wsRef.current = null;
         void refreshChats();
         const cid = chatIdRef.current;
@@ -237,9 +255,12 @@ export function ChatWorkspace() {
     if (!pending?.trim()) return;
     sessionStorage.removeItem("t2s:pendingText");
     const q = pending.trim();
-    setUserBubble(q);
-    logWs("bootstrap from sessionStorage, len=", q.length);
-    queueMicrotask(() => connectAndSend(q));
+    const id = window.setTimeout(() => {
+      setUserBubble(q);
+      logWs("bootstrap from sessionStorage, len=", q.length);
+      connectAndSend(q);
+    }, 0);
+    return () => window.clearTimeout(id);
   }, [connectAndSend]);
 
   useEffect(() => {
@@ -251,7 +272,7 @@ export function ChatWorkspace() {
   const handleSend = () => {
     const text = draft.trim();
     if (!text) return;
-    if (phase === "loading" && !errorMessage) return;
+    if ((phase === "loading" && !errorMessage) || inFlightRef.current) return;
     setUserBubble(text);
     setDraft("");
     connectAndSend(text);
@@ -306,24 +327,31 @@ export function ChatWorkspace() {
         setExpandedChatId(null);
         return;
       }
+      setChatSwitchPending(true);
       try {
         const chat = await fetchChat(id);
         setChats((prev) => prev.map((x) => (x.id === id ? { ...x, ...chat } : x)));
       } catch (e) {
         logWs("fetchChat failed", e);
         setErrorMessage("Не удалось загрузить чат");
+        setChatSwitchPending(false);
         return;
       }
       setChatId(id);
       setSelectedQueryMessageId(null);
       setExpandedChatId(id);
-      await mergeChatHistory(id);
+      try {
+        await mergeChatHistory(id);
+      } finally {
+        setChatSwitchPending(false);
+      }
     },
     [expandedChatId, mergeChatHistory]
   );
 
   const handleSelectChatQuery = useCallback(
     async (_chatId: number, messageId: number) => {
+      setChatSwitchPending(true);
       setChatId(_chatId);
       setExpandedChatId(_chatId);
       setSelectedQueryMessageId(messageId);
@@ -349,17 +377,16 @@ export function ChatWorkspace() {
         logWs("fetchMessageDetail failed", e);
         setErrorMessage("Не удалось загрузить ответ по этому запросу");
         setPhase("idle");
+      } finally {
+        setChatSwitchPending(false);
       }
     },
     [mergeChatHistory]
   );
 
   const handleRenameChat = useCallback(
-    async (id: number) => {
-      const cur = chats.find((c) => c.id === id)?.name ?? "";
-      const name = typeof window !== "undefined" ? window.prompt("Новое название чата", cur) : null;
-      if (name === null) return;
-      const t = name.trim();
+    async (id: number, nextName: string) => {
+      const t = nextName.trim();
       if (!t) return;
       try {
         await updateChat(id, { name: t });
@@ -370,12 +397,11 @@ export function ChatWorkspace() {
         setErrorMessage("Не удалось переименовать чат");
       }
     },
-    [chats, refreshChats]
+    [refreshChats]
   );
 
   const handleDeleteChat = useCallback(
     async (id: number) => {
-      if (typeof window !== "undefined" && !window.confirm("Удалить чат и всю историю сообщений?")) return;
       try {
         await deleteChat(id);
         setChatHistories((prev) => {
@@ -481,6 +507,7 @@ export function ChatWorkspace() {
       onSelectChatQuery={handleSelectChatQuery}
       selectedQueryMessageId={selectedQueryMessageId}
       newChatPending={newChatPending}
+      chatSwitchPending={chatSwitchPending}
       workspaceChatId={chatId}
       workspaceSql={sqlCopyText ?? sqlText}
       onRenameChat={handleRenameChat}

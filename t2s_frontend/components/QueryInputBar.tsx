@@ -2,12 +2,12 @@
 
 import { ArrowRight, Sparkles } from "lucide-react";
 import type { FormEvent, KeyboardEvent } from "react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type QueryInputBarProps = {
   value: string;
   onChange: (value: string) => void;
-  onSubmit: () => void;
+  onSubmit: (nextValue?: string) => void;
   placeholder?: string;
   disabled?: boolean;
   /** Ширина и внешние отступы: например `mx-auto mt-14 w-2/3` или `w-full`. */
@@ -24,13 +24,19 @@ export function QueryInputBar({
 }: QueryInputBarProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [isFocused, setIsFocused] = useState(false);
-  const hasQuery = value.trim().length > 0;
+  const [draftValue, setDraftValue] = useState(value);
+  const hasQuery = draftValue.trim().length > 0;
   const focusInput = () => inputRef.current?.focus();
 
+  useEffect(() => {
+    setDraftValue(value);
+  }, [value]);
+
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.nativeEvent.isComposing) return;
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      onSubmit();
+      onSubmit(event.currentTarget.value);
     }
   };
 
@@ -40,9 +46,19 @@ export function QueryInputBar({
     target.style.height = `${target.scrollHeight}px`;
   };
 
+  const submit = () => {
+    const next = (inputRef.current?.value ?? draftValue).trim();
+    if (!next) return;
+    onSubmit(next);
+  };
+
   return (
-    <div
+    <form
       className={`flex items-center gap-3 rounded-2xl border border-[#E4E4E4] bg-[#F4F4F4] px-4 py-3 shadow-[0_4px_20px_rgba(0,0,0,0.07)] ${className}`}
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit();
+      }}
       onMouseDown={(event) => {
         if ((event.target as HTMLElement).closest("button")) return;
         event.preventDefault();
@@ -56,8 +72,12 @@ export function QueryInputBar({
         <Sparkles size={16} className="shrink-0 text-[#006B62]" strokeWidth={2} />
         <textarea
           ref={inputRef}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
+          value={draftValue}
+          onChange={(event) => {
+            const next = event.currentTarget.value;
+            setDraftValue(next);
+            onChange(next);
+          }}
           onInput={onInputResize}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
@@ -74,9 +94,8 @@ export function QueryInputBar({
         />
       </div>
       <button
-        type="button"
-        onClick={onSubmit}
-        disabled={disabled || !hasQuery}
+        type="submit"
+        disabled={disabled}
         className={`flex min-h-[38px] shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#80B1AC] py-2 text-[13px] font-medium text-white shadow-[0_2px_8px_rgba(90,120,115,0.35)] transition-[width,padding,opacity] duration-300 ease-out hover:brightness-95 disabled:pointer-events-none disabled:opacity-50 ${
           hasQuery ? "w-11 px-0" : "min-w-[112px] px-4"
         }`}
@@ -90,6 +109,6 @@ export function QueryInputBar({
         </span>
         <ArrowRight size={14} strokeWidth={2.2} className="shrink-0" />
       </button>
-    </div>
+    </form>
   );
 }

@@ -16,10 +16,14 @@ export default function Home() {
   const router = useRouter();
   const [query, setQuery] = useState("");
 
-  const submitQuery = () => {
-    const text = query.trim();
+  const submitQuery = (nextValue?: string) => {
+    const text = (nextValue ?? query).trim();
     if (!text) return;
     sessionStorage.setItem("t2s:pendingText", text);
+    if (typeof window !== "undefined") {
+      window.location.assign("/chat");
+      return;
+    }
     router.push("/chat");
   };
 

@@ -68,6 +68,19 @@ services:
     networks:
       - app-network
 
+  t2s-frontend:
+    build:
+      context: ./t2s_frontend
+      dockerfile: Dockerfile
+    container_name: t2s-frontend
+    expose:
+      - "3000"
+    depends_on:
+      - t2s-django
+    restart: always
+    networks:
+      - app-network
+
   t2s-nginx:
     image: nginx:1.27-alpine
     container_name: t2s-nginx
@@ -78,6 +91,7 @@ services:
       - static_volume:/app/static
     depends_on:
       - t2s-django
+      - t2s-frontend
     restart: always
     networks:
       - app-network

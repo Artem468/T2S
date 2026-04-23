@@ -1,9 +1,10 @@
 "use client";
 
 import Image from "next/image";
-import { Copy, Download, Pencil, Plus, Share2, Sparkles, Trash2 } from "lucide-react";
+import { Check, Copy, Download, Pencil, Plus, Share2, Sparkles, Trash2, X } from "lucide-react";
 import { QueryInputBar } from "@/components/QueryInputBar";
 import { MessageSquare } from "lucide-react";
+import { useState } from "react";
 export type DashboardPhase = "idle" | "loading" | "ready";
 
 export type SidebarQueryLeaf = { id: number; text: string };
@@ -44,11 +45,12 @@ export type ChatDashboardViewProps = {
   onSelectChatQuery?: (chatId: number, messageId: number) => void;
   selectedQueryMessageId?: number | null;
   newChatPending?: boolean;
+  chatSwitchPending?: boolean;
   /** Текущий открытый чат (для копирования SQL в шапке строки) */
   workspaceChatId?: number | null;
   /** SQL, показанный справа, если относится к workspaceChatId */
   workspaceSql?: string | null;
-  onRenameChat?: (chatId: number) => void;
+  onRenameChat?: (chatId: number, nextName: string) => void;
   onDeleteChat?: (chatId: number) => void;
   onCopyChatSql?: (chatId: number) => void;
   onCopyLeafSql?: (chatId: number, messageId: number) => void;
@@ -87,6 +89,7 @@ export function ChatDashboardView({
   onSelectChatQuery,
   selectedQueryMessageId = null,
   newChatPending = false,
+  chatSwitchPending = false,
   workspaceChatId = null,
   workspaceSql = null,
   onRenameChat,
@@ -141,7 +144,7 @@ export function ChatDashboardView({
                   workspaceSql={workspaceSql}
                   onSelectRoot={() => onSelectChat?.(c.id)}
                   onSelectLeaf={(messageId) => onSelectChatQuery?.(c.id, messageId)}
-                  onRename={() => onRenameChat?.(c.id)}
+                  onRename={(nextName) => onRenameChat?.(c.id, nextName)}
                   onDelete={() => onDeleteChat?.(c.id)}
                   onCopyChatSql={() => onCopyChatSql?.(c.id)}
                   onCopyLeafSql={(messageId) => onCopyLeafSql?.(c.id, messageId)}
@@ -155,7 +158,7 @@ export function ChatDashboardView({
       <section className="relative flex min-w-0 flex-1 flex-col bg-[#fbfafc] px-5 pt-6">
         <div className="flex-1 overflow-y-auto pb-36">
           <div className="mx-auto max-w-[860px]">
-            {phase === "idle" && (
+            {phase === "idle" && !chatSwitchPending && (
               <div className="mx-auto mt-24 flex h-[260px] max-w-[620px] flex-col items-center justify-center rounded-[18px] border border-dashed border-[#d8d5dd] bg-white/80 px-8 text-center shadow-[0_2px_14px_rgba(0,0,0,0.04)]">
                 <Sparkles className="mb-3 h-8 w-8 text-[#0b7a73]/70" strokeWidth={1.6} />
                 <p className="text-[15px] leading-7 text-[#8f8f96]">
@@ -179,6 +182,25 @@ export function ChatDashboardView({
                     {errorMessage}
                   </p>
                 )}
+              </div>
+            )}
+
+            {chatSwitchPending && phase !== "loading" && (
+              <div className="mx-auto flex max-w-[600px] flex-col gap-5">
+                <article className="rounded-[10px] border border-[#e5e2e8] bg-white px-5 py-4 shadow-[0_4px_16px_rgba(0,0,0,0.10)]">
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className="font-[var(--font-futuraround)] text-[12px] font-bold uppercase tracking-[0.06em] text-[#0b7a73]">
+                      ЗАГРУЗКА ЧАТА
+                    </h2>
+                    <Sparkles className="h-6 w-6 shrink-0 animate-pulse text-[#0b7a73]" strokeWidth={1.5} />
+                  </div>
+                  <div className="mt-8 flex flex-col items-center gap-5 py-4">
+                    <div className="h-10 w-10 rounded-full border-2 border-[#d9d5dd] border-t-[#0b7a73] motion-safe:animate-spin" />
+                    <p className="text-center text-[15px] leading-7 text-[#4b4d55]">Подгружаю данные выбранного чата…</p>
+                  </div>
+                </article>
+                <PanelSkeleton title="Таблица" />
+                <PanelSkeleton title="График" tall />
               </div>
             )}
 
@@ -415,16 +437,38 @@ function ChatGroup({
   workspaceSql?: string | null;
   onSelectRoot?: () => void;
   onSelectLeaf?: (messageId: number) => void;
-  onRename?: () => void;
+  onRename?: (nextName: string) => void;
   onDelete?: () => void;
   onCopyChatSql?: () => void;
   onCopyLeafSql?: (messageId: number) => void;
 }) {
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [nextTitle, setNextTitle] = useState(title);
+  const [isDeleteConfirm, setIsDeleteConfirm] = useState(false);
+
   const canCopyRootSql =
     workspaceChatId != null &&
     workspaceChatId === chatId &&
     typeof workspaceSql === "string" &&
     workspaceSql.trim().length > 0;
+
+  const openRename = () => {
+    setNextTitle(title);
+    setIsRenaming(true);
+    setIsDeleteConfirm(false);
+  };
+
+  const cancelRename = () => {
+    setIsRenaming(false);
+    setNextTitle(title);
+  };
+
+  const submitRename = () => {
+    const trimmed = nextTitle.trim();
+    if (!trimmed) return;
+    onRename?.(trimmed);
+    setIsRenaming(false);
+  };
 
   return (
     <div className="w-full">
@@ -438,56 +482,120 @@ function ChatGroup({
             active ? "bg-[#0b9d97]" : "bg-[#5f6168]"
           }`}
         />
-        <button
-          type="button"
-          className="flex min-w-0 flex-1 items-center gap-3 py-0 pl-7 pr-1 text-left"
-          onClick={() => onSelectRoot?.()}
-        >
-          <MessageSquare
-            className={`h-[16px] w-[16px] shrink-0 ${active ? "text-[#0b9d97]" : "text-[#6a6c73]"}`}
-            strokeWidth={1.8}
-          />
-          <span
-            className={`truncate text-[16px] font-semibold leading-none ${
-              active ? "text-[#0b9d97]" : "text-[#5f6168]"
-            }`}
-          >
-            {title}
-          </span>
-        </button>
-        <div
-          className={`flex shrink-0 items-center gap-0.5 pr-1 ${active ? "text-[#0b9d97]" : "text-[#6a6c73]"}`}
-          onClick={(e) => e.stopPropagation()}
-        >
+        {isRenaming ? (
+          <div className="flex min-w-0 flex-1 items-center gap-2 py-0 pl-7 pr-1">
+            <MessageSquare
+              className={`h-[16px] w-[16px] shrink-0 ${active ? "text-[#0b9d97]" : "text-[#6a6c73]"}`}
+              strokeWidth={1.8}
+            />
+            <input
+              value={nextTitle}
+              onChange={(e) => setNextTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submitRename();
+                if (e.key === "Escape") cancelRename();
+              }}
+              className="min-w-0 flex-1 rounded-md border border-[#cfd3db] bg-white px-2 py-1 text-[14px] leading-none text-[#2d2e33] outline-none focus:border-[#0b9d97]"
+              autoFocus
+            />
+            <button
+              type="button"
+              className="rounded-md p-1.5 text-[#0b9d97] transition-colors hover:bg-black/[0.06]"
+              aria-label="Сохранить название чата"
+              onClick={submitRename}
+            >
+              <Check className="h-[16px] w-[16px]" strokeWidth={2} />
+            </button>
+            <button
+              type="button"
+              className="rounded-md p-1.5 transition-colors hover:bg-black/[0.06]"
+              aria-label="Отменить переименование"
+              onClick={cancelRename}
+            >
+              <X className="h-[16px] w-[16px]" strokeWidth={2} />
+            </button>
+          </div>
+        ) : (
           <button
             type="button"
-            className="rounded-md p-1.5 transition-colors hover:bg-black/[0.06] disabled:cursor-not-allowed disabled:opacity-35"
-            aria-label="Копировать SQL текущего запроса"
-            title="Копировать SQL"
-            disabled={!canCopyRootSql}
-            onClick={() => onCopyChatSql?.()}
+            className="flex min-w-0 flex-1 items-center gap-3 py-0 pl-7 pr-1 text-left"
+            onClick={() => onSelectRoot?.()}
           >
-            <Copy className="h-[16px] w-[16px]" strokeWidth={1.8} />
+            <MessageSquare
+              className={`h-[16px] w-[16px] shrink-0 ${active ? "text-[#0b9d97]" : "text-[#6a6c73]"}`}
+              strokeWidth={1.8}
+            />
+            <span
+              className={`truncate text-[16px] font-semibold leading-none ${
+                active ? "text-[#0b9d97]" : "text-[#5f6168]"
+              }`}
+            >
+              {title}
+            </span>
           </button>
-          <button
-            type="button"
-            className="rounded-md p-1.5 transition-colors hover:bg-black/[0.06]"
-            aria-label="Переименовать чат"
-            title="Переименовать"
-            onClick={() => onRename?.()}
+        )}
+        {!isRenaming && (
+          <div
+            className={`flex shrink-0 items-center gap-0.5 pr-1 ${active ? "text-[#0b9d97]" : "text-[#6a6c73]"}`}
+            onClick={(e) => e.stopPropagation()}
           >
-            <Pencil className="h-[16px] w-[16px]" strokeWidth={1.8} />
-          </button>
-          <button
-            type="button"
-            className="rounded-md p-1.5 transition-colors hover:bg-black/[0.06]"
-            aria-label="Удалить чат"
-            title="Удалить"
-            onClick={() => onDelete?.()}
-          >
-            <Trash2 className="h-[16px] w-[16px]" strokeWidth={1.8} />
-          </button>
-        </div>
+            <button
+              type="button"
+              className="rounded-md p-1.5 transition-colors hover:bg-black/[0.06] disabled:cursor-not-allowed disabled:opacity-35"
+              aria-label="Копировать SQL текущего запроса"
+              title="Копировать SQL"
+              disabled={!canCopyRootSql}
+              onClick={() => onCopyChatSql?.()}
+            >
+              <Copy className="h-[16px] w-[16px]" strokeWidth={1.8} />
+            </button>
+            <button
+              type="button"
+              className="rounded-md p-1.5 transition-colors hover:bg-black/[0.06]"
+              aria-label="Переименовать чат"
+              title="Переименовать"
+              onClick={openRename}
+            >
+              <Pencil className="h-[16px] w-[16px]" strokeWidth={1.8} />
+            </button>
+            {isDeleteConfirm ? (
+              <div className="ml-1 inline-flex items-center gap-1 rounded-md border border-[#d8dbe3] bg-white px-1 py-0.5">
+                <button
+                  type="button"
+                  className="rounded-md p-1 text-[#0b9d97] transition-colors hover:bg-black/[0.06]"
+                  aria-label="Подтвердить удаление чата"
+                  onClick={() => {
+                    setIsDeleteConfirm(false);
+                    onDelete?.();
+                  }}
+                >
+                  <Check className="h-[14px] w-[14px]" strokeWidth={2.1} />
+                </button>
+                <button
+                  type="button"
+                  className="rounded-md p-1 transition-colors hover:bg-black/[0.06]"
+                  aria-label="Отменить удаление чата"
+                  onClick={() => setIsDeleteConfirm(false)}
+                >
+                  <X className="h-[14px] w-[14px]" strokeWidth={2.1} />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="rounded-md p-1.5 transition-colors hover:bg-black/[0.06]"
+                aria-label="Удалить чат"
+                title="Удалить"
+                onClick={() => {
+                  setIsDeleteConfirm(true);
+                  setIsRenaming(false);
+                }}
+              >
+                <Trash2 className="h-[16px] w-[16px]" strokeWidth={1.8} />
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {expanded && (
