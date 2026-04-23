@@ -4,7 +4,11 @@ import Image from "next/image";
 import { Check, Copy, Download, Pencil, Plus, Share2, Sparkles, Trash2, X } from "lucide-react";
 import { QueryInputBar } from "@/components/QueryInputBar";
 import { MessageSquare } from "lucide-react";
-import { useState } from "react";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { useEffect, useRef, useState } from "react";
+import type { ExportFormat } from "@/lib/api";
+import type { BarDatum } from "@/components/chat/chartFromRows";
 export type DashboardPhase = "idle" | "loading" | "ready";
 
 export type SidebarQueryLeaf = { id: number; text: string };
@@ -13,7 +17,6 @@ export type SidebarChatItem = {
   id: number;
   title: string;
   active?: boolean;
-  /** Раскрыт список подчатов (запросов пользователя) в сайдбаре */
   expanded?: boolean;
   queries: SidebarQueryLeaf[];
 };
@@ -34,10 +37,7 @@ export type ChatDashboardViewProps = {
   errorMessage: string | null;
   hasSql: boolean;
   hasData: boolean;
-  barPercents: number[];
-  pieA: number;
-  pieB: number;
-  pieAngle: number;
+  chartBars: BarDatum[];
   forceTableChartSkeleton?: boolean;
   sidebarChats?: SidebarChatItem[];
   onNewChat?: () => void;
@@ -46,14 +46,49 @@ export type ChatDashboardViewProps = {
   selectedQueryMessageId?: number | null;
   newChatPending?: boolean;
   chatSwitchPending?: boolean;
-  /** Текущий открытый чат (для копирования SQL в шапке строки) */
   workspaceChatId?: number | null;
-  /** SQL, показанный справа, если относится к workspaceChatId */
   workspaceSql?: string | null;
   onRenameChat?: (chatId: number, nextName: string) => void;
   onDeleteChat?: (chatId: number) => void;
   onCopyChatSql?: (chatId: number) => void;
   onCopyLeafSql?: (chatId: number, messageId: number) => void;
+  canDownload?: boolean;
+  onDownloadFormat?: (fmt: ExportFormat) => void | Promise<void>;
+};
+
+const sqlTheme = {
+  ...oneLight,
+  'pre[class*="language-"]': {
+    ...oneLight['pre[class*="language-"]'],
+    margin: 0,
+    padding: 0,
+    background: "transparent",
+    fontSize: "11px",
+    lineHeight: "1.7",
+    fontFamily:
+      'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+  },
+  'code[class*="language-"]': {
+    ...oneLight['code[class*="language-"]'],
+    background: "transparent",
+    color: "#6a7080",
+  },
+  keyword: {
+    color: "#0f766e",
+    fontWeight: 500,
+  },
+  string: {
+    color: "#0f766e",
+  },
+  number: {
+    color: "#7c3aed",
+  },
+  punctuation: {
+    color: "#8d8d93",
+  },
+  operator: {
+    color: "#8d8d93",
+  },
 };
 
 function formatCell(value: unknown): string {
@@ -78,10 +113,7 @@ export function ChatDashboardView({
   errorMessage,
   hasSql,
   hasData,
-  barPercents,
-  pieA,
-  pieB,
-  pieAngle,
+  chartBars,
   forceTableChartSkeleton = false,
   sidebarChats = [],
   onNewChat,
@@ -96,20 +128,52 @@ export function ChatDashboardView({
   onDeleteChat,
   onCopyChatSql,
   onCopyLeafSql,
+  canDownload = false,
+  onDownloadFormat,
 }: ChatDashboardViewProps) {
   const showBubble = userBubble.length > 0 && (phase === "loading" || phase === "ready");
   const copySource = sqlCopyText ?? sqlText ?? "";
+  const [copyToast, setCopyToast] = useState<string | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current != null) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
+
+  const showCopyToast = (message: string) => {
+    setCopyToast(message);
+    if (toastTimerRef.current != null) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = window.setTimeout(() => {
+      setCopyToast(null);
+      toastTimerRef.current = null;
+    }, 1800);
+  };
+
+  const handleCopySql = async () => {
+    try {
+      await navigator.clipboard?.writeText(copySource);
+      showCopyToast("Скопировано");
+    } catch {
+      showCopyToast("Не удалось скопировать");
+    }
+  };
 
   return (
     <>
-      <div className="flex items-center h-[10dvh] px-5">
+      <div className="flex h-[72px] items-center px-4 sm:px-5 lg:h-[10dvh]">
         <Image src="/t2slogo.svg" alt="T2S" width={96} height={44} priority />
       </div>
-    <div className="flex h-[90dvh] min-h-0 w-full bg-[#FBF8FC] text-[#26262b]">
-      <aside className="flex min-h-0 w-1/5 shrink-0 flex-col ">
+    <div className="flex min-h-0 w-full flex-col bg-[#FBF8FC] text-[#26262b] lg:h-[90dvh] lg:flex-row">
+      <aside className="order-1 flex min-h-0 w-full shrink-0 flex-col lg:order-none lg:w-1/5">
         
 
-        <div className="flex min-h-0 flex-1 flex-col bg-[#F5F3F8] rounded-tr-[50px] p-6">
+        <div className="flex min-h-0 flex-1 flex-col rounded-b-[28px] bg-[#F5F3F8] p-4 sm:p-5 lg:rounded-b-none lg:rounded-tr-[50px] lg:p-6">
           <div className="mb-4">
             <p className="font-[var(--font-futuraround)] text-[20px] font-bold uppercase leading-none text-[#2d2e33]">
               ЧАТЫ
@@ -120,14 +184,14 @@ export function ChatDashboardView({
           <button
             type="button"
             disabled={newChatPending}
-            className="mb-4 inline-flex w-[142px] items-center justify-center gap-2 rounded-[7px] bg-[#0b7a73] px-4 py-2 text-[14px] font-semibold text-white shadow-[0_6px_16px_rgba(11,122,115,0.28)] transition-colors hover:bg-[#09665f] disabled:pointer-events-none disabled:opacity-60"
+            className="mb-4 inline-flex w-full max-w-[180px] items-center justify-center gap-2 rounded-[7px] bg-[#0b7a73] px-4 py-2 text-[14px] font-semibold text-white shadow-[0_6px_16px_rgba(11,122,115,0.28)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-[#09665f] hover:shadow-[0_10px_22px_rgba(11,122,115,0.30)] disabled:pointer-events-none disabled:opacity-60"
             onClick={() => onNewChat?.()}
           >
             <Plus className="h-4 w-4" strokeWidth={2.2} />
             Новый чат
           </button>
 
-          <nav className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+          <nav className="min-h-0 max-h-[36dvh] flex-1 space-y-2 overflow-y-auto pr-1 lg:max-h-none">
             {sidebarChats.length === 0 ? (
               <p className="pl-1 text-[13px] leading-6 text-[#8d8d93]">История появится после диалога с сервисом.</p>
             ) : (
@@ -155,8 +219,8 @@ export function ChatDashboardView({
         </div>
       </aside>
 
-      <section className="relative flex min-w-0 flex-1 flex-col bg-[#fbfafc] px-5 pt-6">
-        <div className="flex-1 overflow-y-auto pb-36">
+      <section className="order-2 relative flex min-w-0 flex-1 flex-col bg-[#fbfafc] px-3 pt-4 sm:px-5 sm:pt-6 lg:order-none">
+        <div className="flex-1 overflow-y-auto pb-8 lg:pb-36">
           <div className="mx-auto max-w-[860px]">
             {phase === "idle" && !chatSwitchPending && (
               <div className="mx-auto mt-24 flex h-[260px] max-w-[620px] flex-col items-center justify-center rounded-[18px] border border-dashed border-[#d8d5dd] bg-white/80 px-8 text-center shadow-[0_2px_14px_rgba(0,0,0,0.04)]">
@@ -170,7 +234,7 @@ export function ChatDashboardView({
             {phase === "loading" && (
               <div className="mx-auto flex max-w-[600px] flex-col gap-5">
                 {showBubble && (
-                  <div className="ml-auto max-w-[90%] rounded-[10px] bg-[#b9efe7] px-5 py-3 text-[14px] leading-6 text-[#283136] shadow-[0_6px_18px_rgba(11,122,115,0.14)]">
+                  <div className="ml-auto max-w-[90%] rounded-[10px] bg-[#b9efe7] px-5 py-3 text-[14px] leading-6 text-[#283136] shadow-[0_6px_18px_rgba(11,122,115,0.14)] motion-safe:animate-pulse">
                     {userBubble}
                   </div>
                 )}
@@ -187,7 +251,7 @@ export function ChatDashboardView({
 
             {chatSwitchPending && phase !== "loading" && (
               <div className="mx-auto flex max-w-[600px] flex-col gap-5">
-                <article className="rounded-[10px] border border-[#e5e2e8] bg-white px-5 py-4 shadow-[0_4px_16px_rgba(0,0,0,0.10)]">
+                <article className="rounded-[10px] border border-[#e5e2e8] bg-white px-4 py-4 shadow-[0_4px_16px_rgba(0,0,0,0.10)] sm:px-5">
                   <div className="flex items-center justify-between gap-3">
                     <h2 className="font-[var(--font-futuraround)] text-[12px] font-bold uppercase tracking-[0.06em] text-[#0b7a73]">
                       ЗАГРУЗКА ЧАТА
@@ -207,12 +271,12 @@ export function ChatDashboardView({
             {phase === "ready" && (
               <div className="mx-auto flex max-w-[600px] flex-col gap-5">
                 {showBubble && (
-                  <div className="ml-auto max-w-[90%] rounded-[10px] bg-[#b9efe7] px-5 py-3 text-[14px] leading-6 text-[#283136] shadow-[0_6px_18px_rgba(11,122,115,0.14)]">
+                  <div className="ml-auto max-w-[90%] rounded-[10px] bg-[#b9efe7] px-5 py-3 text-[14px] leading-6 text-[#283136] shadow-[0_6px_18px_rgba(11,122,115,0.14)] transition-transform duration-200 ease-out hover:-translate-y-0.5">
                     {userBubble}
                   </div>
                 )}
 
-                <article className="rounded-[10px] border border-[#e5e2e8] bg-white px-5 py-4 shadow-[0_4px_16px_rgba(0,0,0,0.10)]">
+                <article className="rounded-[10px] border border-[#e5e2e8] bg-white px-4 py-4 shadow-[0_4px_16px_rgba(0,0,0,0.10)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_10px_22px_rgba(0,0,0,0.12)] sm:px-5">
                   <h2 className="font-[var(--font-futuraround)] text-[12px] font-bold uppercase tracking-[0.06em] text-[#0b7a73]">
                     ОТВЕТ
                   </h2>
@@ -236,8 +300,8 @@ export function ChatDashboardView({
                   </>
                 ) : (
                   <>
-                    <article className="overflow-hidden rounded-[10px] border border-[#e5e2e8] bg-white shadow-[0_4px_16px_rgba(0,0,0,0.10)]">
-                      <header className="flex items-center justify-between bg-[#f8f6fa] px-5 py-4">
+                    <article className="overflow-hidden rounded-[10px] border border-[#e5e2e8] bg-white shadow-[0_4px_16px_rgba(0,0,0,0.10)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_10px_22px_rgba(0,0,0,0.12)]">
+                      <header className="flex items-center justify-between bg-[#f8f6fa] px-4 py-4 sm:px-5">
                         <h3 className="font-[var(--font-futuraround)] text-[13px] font-bold text-[#2f3138]">Таблица</h3>
                         <div className="flex gap-3 text-[#666873]">
                           <button type="button" className="rounded-full p-1.5 hover:bg-black/5" aria-label="Скачать">
@@ -284,8 +348,8 @@ export function ChatDashboardView({
                       </div>
                     </article>
 
-                    <article className="overflow-hidden rounded-[10px] border border-[#e5e2e8] bg-white shadow-[0_4px_16px_rgba(0,0,0,0.10)]">
-                      <header className="flex items-center justify-between bg-[#f8f6fa] px-5 py-4">
+                    <article className="overflow-hidden rounded-[10px] border border-[#e5e2e8] bg-white shadow-[0_4px_16px_rgba(0,0,0,0.10)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_10px_22px_rgba(0,0,0,0.12)]">
+                      <header className="flex items-center justify-between bg-[#f8f6fa] px-4 py-4 sm:px-5">
                         <h3 className="font-[var(--font-futuraround)] text-[13px] font-bold text-[#2f3138]">График</h3>
                         <div className="flex gap-3 text-[#666873]">
                           <button type="button" className="rounded-full p-1.5 hover:bg-black/5" aria-label="Скачать">
@@ -297,32 +361,64 @@ export function ChatDashboardView({
                         </div>
                       </header>
 
-                      <div className="flex flex-wrap items-end justify-between gap-8 px-5 py-6">
-                        <div className="flex h-40 min-w-[240px] flex-1 items-end justify-center gap-3 sm:justify-start">
-                          {barPercents.map((h, i) => (
-                            <div key={i} className="flex w-9 flex-col items-center gap-2">
-                              <div
-                                className="w-full max-w-8 rounded-full border border-[#71c8c3] bg-transparent"
-                                style={{ height: `${Math.max(28, Math.round((h / 100) * 120))}px` }}
-                              />
-                              <span className="text-[11px] tabular-nums text-[#3d4048]">{i + 1}</span>
+                      <div className="px-4 py-6 sm:px-5">
+                        {chartBars.length === 0 ? (
+                          <p className="py-8 text-center text-[14px] text-[#8C8C8C]">Нет данных для построения графика.</p>
+                        ) : (
+                          <div className="overflow-x-auto rounded-[12px] px-4 py-4">
+                            {(() => {
+                              const maxAbs = Math.max(1, ...chartBars.map((x) => Math.abs(x.value)));
+                              const minAbs = Math.min(...chartBars.map((x) => Math.abs(x.value)));
+                              const span = Math.max(1, maxAbs - minAbs);
+                              return (
+                            <div
+                              className="flex h-[236px] items-end gap-5"
+                              style={{ minWidth: `${Math.max(520, chartBars.length * 96)}px` }}
+                            >
+                              {chartBars.map((item, i) => {
+                                const absVal = Math.abs(item.value);
+                                const normalized = (absVal - minAbs) / span;
+                                const shapeHeight = Math.round(72 + normalized * 136);
+                                const isDot = normalized < 0.15;
+                                return (
+                                  <div key={`${item.label}-${i}`} className="flex w-[76px] shrink-0 flex-col items-center justify-end">
+                                    <span className="mb-2 text-[11px] font-medium tabular-nums text-[#4e525c]">
+                                      {Number.isInteger(item.value) ? item.value : item.value.toFixed(2)}
+                                    </span>
+                                    <div
+                                      className="transition-all duration-500 ease-out"
+                                      style={
+                                        isDot
+                                          ? {
+                                              width: "50px",
+                                              height: "70px",
+                                              borderRadius: "9999px",
+                                              border: "2px solid #0b9d97",
+                                              background: "#F5F3F8",
+                                            }
+                                          : {
+                                              width: "50px",
+                                              height: `${shapeHeight}px`,
+                                              borderRadius: "40px",
+                                              border: "2px solid #0b9d97",
+                                              background: "#F5F3F8",
+                                            }
+                                      }
+                                    />
+                                    <span
+                                      className="mt-2 block w-full truncate px-1 text-center text-[11px] leading-tight text-[#5a5d66]"
+                                      title={item.label}
+                                    >
+                                      {item.label}
+                                    </span>
+                                  </div>
+                                );
+                              })}
                             </div>
-                          ))}
-                        </div>
-
-                        <div
-                          className="relative mx-auto h-36 w-36 shrink-0 rounded-full border border-[#71c8c3] shadow-[0_4px_14px_rgba(0,0,0,0.05)]"
-                          style={{
-                            background: `conic-gradient(#71c8c3 0deg ${pieAngle}deg, transparent ${pieAngle}deg 360deg)`,
-                          }}
-                        >
-                          <span className="absolute left-[22%] top-[28%] text-[12px] font-semibold text-[#2f3138]">
-                            {pieA}
-                          </span>
-                          <span className="absolute bottom-[24%] right-[18%] text-[12px] font-semibold text-[#2f3138]">
-                            {pieB}
-                          </span>
-                        </div>
+                              );
+                            })()}
+                          </div>
+                        )}
                       </div>
                     </article>
                   </>
@@ -332,8 +428,8 @@ export function ChatDashboardView({
           </div>
         </div>
 
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#fbfafc] via-[#fbfafc] to-transparent pb-4 pt-10">
-          <div className="pointer-events-auto mx-auto max-w-[760px] px-5">
+        <div className="pointer-events-none sticky inset-x-0 bottom-0 mt-4 bg-gradient-to-t from-[#fbfafc] via-[#fbfafc] to-transparent pb-3 pt-6 lg:absolute lg:mt-0 lg:pb-4 lg:pt-10">
+          <div className="pointer-events-auto mx-auto max-w-[760px] px-1 sm:px-3 lg:px-5">
             <QueryInputBar
               className="w-full"
               value={draft}
@@ -345,28 +441,50 @@ export function ChatDashboardView({
         </div>
       </section>
 
-      <aside className="flex min-h-0 w-1/5 shrink-0 flex-col ">
-        <div className="flex min-h-0 flex-1 flex-col bg-[#F5F3F8] rounded-tl-[50px] p-6">
-          <h2 className="font-[var(--font-futuraround)] text-[18px] font-bold uppercase leading-[1.05] text-[#2d2e33]">
+      <aside className="order-3 flex min-h-0 w-full shrink-0 flex-col lg:order-none lg:w-1/5">
+        <div className="flex min-h-0 flex-1 flex-col rounded-t-[28px] bg-[#F5F3F8] p-4 sm:p-5 lg:rounded-t-none lg:rounded-tl-[50px] lg:p-6">
+          <h2 className="font-[var(--font-futuraround)] text-[20px] font-bold uppercase text-[#2d2e33]">
             ДОПОЛНИТЕЛЬНАЯ ИНФОРМАЦИЯ
           </h2>
 
           <p className="mt-2 text-[11px] uppercase tracking-[0.08em] text-[#8d8d93]">SQL КОД</p>
 
-          <div className="relative mt-3 min-h-[196px] rounded-[10px] bg-[#e8e4ea] p-4">
+          <div className="relative mt-3 min-h-[160px] rounded-[10px] bg-[#e8e4ea] p-4 lg:min-h-[196px]">
             {sqlText ? (
               <>
-                <pre className="max-h-[280px] overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-[#6a7080]">
-                  {sqlText}
-                </pre>
+                <div className="max-h-[220px] overflow-auto pr-10 lg:max-h-[280px]">
+                  <SyntaxHighlighter
+                    language="sql"
+                    style={sqlTheme}
+                    wrapLongLines
+                    customStyle={{
+                      margin: 0,
+                      padding: 0,
+                      background: "transparent",
+                    }}
+                    codeTagProps={{
+                      style: {
+                        fontSize: "11px",
+                        lineHeight: "1.7",
+                      },
+                    }}
+                  >
+                    {sqlText}
+                  </SyntaxHighlighter>
+                </div>
                 <button
                   type="button"
                   className="absolute bottom-3 right-3 rounded-[10px] bg-[#d0ccc9] p-2 text-[#7a7d84]"
                   aria-label="Копировать SQL"
-                  onClick={() => void navigator.clipboard?.writeText(copySource)}
+                  onClick={() => void handleCopySql()}
                 >
                   <Copy className="h-4 w-4" strokeWidth={1.8} />
                 </button>
+                {copyToast && (
+                  <div className="pointer-events-none absolute bottom-14 right-3 rounded-md bg-[#0b7a73] px-2.5 py-1 text-[11px] font-medium text-white shadow-[0_8px_18px_rgba(11,122,115,0.35)]">
+                    {copyToast}
+                  </div>
+                )}
               </>
             ) : phase === "loading" ? (
               <div className="space-y-2 pt-1">
@@ -380,26 +498,41 @@ export function ChatDashboardView({
             )}
           </div>
 
-          <div className="mt-6">
+          <div className="mt-4 rounded-[16px] border border-[#e0dde4] bg-white px-4 py-4 shadow-[0_4px_14px_rgba(0,0,0,0.05)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_9px_20px_rgba(0,0,0,0.08)] lg:mt-auto">
             <p className="text-[18px] font-bold uppercase leading-none text-[#0b7a73]">СКАЧИВАНИЕ</p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button type="button" className="rounded-full bg-[#e1f6f3] px-4 py-2 text-[13px] font-semibold text-[#0b7a73]">
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={!canDownload}
+                className="rounded-full bg-[#e1f6f3] px-4 py-2 text-[13px] font-semibold text-[#0b7a73] disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => void onDownloadFormat?.("xlsx")}
+              >
                 Скачать Excel
               </button>
-              <button type="button" className="rounded-full bg-[#e1f6f3] px-4 py-2 text-[13px] font-semibold text-[#0b7a73]">
+              <button
+                type="button"
+                disabled={!canDownload}
+                className="rounded-full bg-[#e1f6f3] px-4 py-2 text-[13px] font-semibold text-[#0b7a73] disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => void onDownloadFormat?.("pdf")}
+              >
                 Скачать PDF
               </button>
-              <button type="button" className="rounded-full bg-[#e1f6f3] px-4 py-2 text-[13px] font-semibold text-[#0b7a73]">
+              <button
+                type="button"
+                disabled={!canDownload}
+                className="rounded-full bg-[#e1f6f3] px-4 py-2 text-[13px] font-semibold text-[#0b7a73] disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => void onDownloadFormat?.("docx")}
+              >
                 Скачать DOCX
               </button>
             </div>
           </div>
 
-          <div className="mt-auto rounded-[16px] border border-[#e0dde4] bg-white px-4 py-4 shadow-[0_4px_14px_rgba(0,0,0,0.05)]">
+          <div className="mt-4 rounded-[16px] border border-[#e0dde4] bg-white px-4 py-4 shadow-[0_4px_14px_rgba(0,0,0,0.05)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_9px_20px_rgba(0,0,0,0.08)] lg:mt-auto">
             <p className="text-[18px] font-bold uppercase leading-none text-[#0b7a73]">РАССЫЛКА</p>
             <button
               type="button"
-              className="mt-4 w-full rounded-[12px] bg-[#c0eeea] py-3 text-[14px] font-semibold text-[#0b7a73] transition-colors hover:bg-[#b4e8e3]"
+              className="mt-5 w-full rounded-[12px] bg-[#c0eeea] py-3 text-[14px] font-semibold text-[#0b7a73] transition-colors hover:bg-[#b4e8e3]"
             >
               Отправить ссылку
             </button>
@@ -475,7 +608,7 @@ function ChatGroup({
       <div
         className={`relative flex h-[54px] w-full items-stretch overflow-hidden rounded-[12px] ${
           active ? "bg-[#dceef2]" : "bg-[#eceaf2]"
-        }`}
+        } transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_6px_14px_rgba(0,0,0,0.08)]`}
       >
         <span
           className={`pointer-events-none absolute left-0 top-0 h-full w-[4px] rounded-l-[12px] ${
@@ -539,16 +672,7 @@ function ChatGroup({
             className={`flex shrink-0 items-center gap-0.5 pr-1 ${active ? "text-[#0b9d97]" : "text-[#6a6c73]"}`}
             onClick={(e) => e.stopPropagation()}
           >
-            <button
-              type="button"
-              className="rounded-md p-1.5 transition-colors hover:bg-black/[0.06] disabled:cursor-not-allowed disabled:opacity-35"
-              aria-label="Копировать SQL текущего запроса"
-              title="Копировать SQL"
-              disabled={!canCopyRootSql}
-              onClick={() => onCopyChatSql?.()}
-            >
-              <Copy className="h-[16px] w-[16px]" strokeWidth={1.8} />
-            </button>
+           
             <button
               type="button"
               className="rounded-md p-1.5 transition-colors hover:bg-black/[0.06]"
@@ -606,7 +730,7 @@ function ChatGroup({
             queries.map((q) => {
               const picked = selectedQueryMessageId === q.id;
               return (
-                <div key={q.id} className="relative flex min-h-[28px] items-start gap-1 pl-3">
+                <div key={q.id} className="relative flex min-h-[28px] items-start gap-1 pl-3 transition-colors duration-200 hover:bg-black/[0.02]">
                   <span className="absolute left-[0px] top-0 h-full w-px bg-[#6d6f76]" />
                   <button
                     type="button"
@@ -621,18 +745,7 @@ function ChatGroup({
                       {q.text}
                     </div>
                   </button>
-                  <button
-                    type="button"
-                    className="mt-0.5 shrink-0 rounded p-1 text-[#6a6c73] transition-colors hover:bg-black/[0.06] hover:text-[#0b9d97]"
-                    aria-label="Копировать SQL этого запроса"
-                    title="Копировать SQL"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onCopyLeafSql?.(q.id);
-                    }}
-                  >
-                    <Copy className="h-3.5 w-3.5" strokeWidth={2} />
-                  </button>
+                
                 </div>
               );
             })

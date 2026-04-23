@@ -20,6 +20,13 @@ export type ApiMessageDetail = {
   sql?: string | null;
 };
 
+export type ExportFormat = "xlsx" | "docx" | "pdf";
+
+export type ExportFile = {
+  blob: Blob;
+  fileName: string;
+};
+
 type UpdateChatPayload = {
   name?: string;
 };
@@ -35,17 +42,17 @@ function getBackendOrigin(): string {
   if (explicit) return trimSlash(explicit);
   if (typeof window !== "undefined") {
     const { port, origin } = window.location;
-    if (port === "3000") return "";
+    if (port === "3000") return "http://127.0.0.1:80";
     return origin;
   }
-  return "";
+  return "http://127.0.0.1:80";
 }
 
 function buildUrl(path: string): string {
   const base = `${getBackendOrigin()}${CHAT_API_BASE}`;
   const normalizedPath = path.replace(/^\/+/, "").replace(/\/+$/, "");
-  if (!normalizedPath) return base;
-  return `${base}/${normalizedPath}`;
+  if (!normalizedPath) return `${base}/`;
+  return `${base}/${normalizedPath}/`;
 }
 
 async function readJsonOrThrow<T>(response: Response): Promise<T> {
@@ -125,4 +132,24 @@ export async function fetchMessageDetail(messageId: number): Promise<ApiMessageD
     ...detail,
     payload: Array.isArray(detail.payload) ? detail.payload : [],
   };
+}
+
+function inferFileName(contentDisposition: string | null, fallback: string): string {
+  if (!contentDisposition) return fallback;
+  const match = contentDisposition.match(/filename\*?=(?:UTF-8''|")?([^\";]+)/i);
+  if (!match?.[1]) return fallback;
+  return decodeURIComponent(match[1].replace(/"/g, "").trim());
+}
+
+export async function exportMessageFile(messageId: number, fmt: ExportFormat): Promise<ExportFile> {
+  const response = await fetch(`${buildUrl(`export/${messageId}`)}?fmt=${fmt}`, {
+    method: "GET",
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  const blob = await response.blob();
+  const fileName = inferFileName(response.headers.get("Content-Disposition"), `message_${messageId}.${fmt}`);
+  return { blob, fileName };
 }
