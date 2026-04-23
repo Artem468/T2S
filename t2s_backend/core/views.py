@@ -1,11 +1,13 @@
 import io
 import json
+import uuid
 
 from asgiref.sync import async_to_sync
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from docx import Document
-from drf_spectacular.utils import extend_schema, extend_schema_view
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
 from openpyxl import Workbook
 from reportlab.pdfgen import canvas
 from rest_framework import viewsets, permissions, status
@@ -60,6 +62,7 @@ class MessageDetailView(APIView):
     def get(self, request, message_id):
         instance = get_object_or_404(Message, message_id=message_id)
         sql_text = instance.message
+        _req = Message.objects.get(id=message_id)
         if not sql_text:
             return Response(
                 {"error": "Для этого сообщения ещё нет сгенерированного SQL"},
@@ -74,7 +77,7 @@ class MessageDetailView(APIView):
         serializer = MessagePreviewSerializer(instance)
         response_data = serializer.data
         response_data['payload'] = external_body
-        response_data['sql'] = sql_text
+        response_data['request'] = _req.message
 
         return Response(response_data)
 
@@ -82,13 +85,28 @@ class MessageDetailView(APIView):
 class MessageExportView(APIView):
     @extend_schema(
         summary="Экспорт сообщений пользователя",
-        description="Экспортирует данные в нужный формат",
-        responses={200: MessagePreviewSerializer},
-        tags=['Сообщения']
+        description="Экспортирует данные в нужный формат (JSON, XLSX, DOCX, PDF)",
+        responses={
+            200: MessagePreviewSerializer,
+            (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY,
+            (200, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'): OpenApiTypes.BINARY,
+            (200, 'application/pdf'): OpenApiTypes.BINARY,
+        },
+        tags=['Сообщения'],
+        parameters=[
+            OpenApiParameter(
+                name='fmt',
+                type=OpenApiTypes.STR,
+                location="query",
+                description='Формат выгрузки файла',
+                required=False,
+                enum=['xlsx', 'docx', 'pdf']
+            ),
+        ]
     )
     def get(self, request, message_id):
-        instance = get_object_or_404(Message, id=message_id)
-        sql_text = instance.sql_for_data_query()
+        instance = get_object_or_404(Message, message_id=message_id)
+        sql_text = instance.message
         if not sql_text:
             return Response(
                 {"error": "Для этого сообщения ещё нет сгенерированного SQL"},
@@ -107,7 +125,7 @@ class MessageExportView(APIView):
         response_data = serializer.data
         response_data['payload'] = external_data
 
-        export_format = request.query_params.get('format')
+        export_format = request.query_params.get('fmt')
         if export_format:
             return self.handle_export(export_format, response_data)
 
@@ -115,22 +133,21 @@ class MessageExportView(APIView):
 
     def handle_export(self, fmt, data):
         """Маршрутизатор экспорта."""
-        filename = f"message_{data['id']}"
+        filename = f"message_{uuid.uuid4().hex}"
         if fmt == 'xlsx':
             return self.export_excel(data, filename)
         elif fmt == 'docx':
             return self.export_docx(data, filename)
         elif fmt == 'pdf':
             return self.export_pdf(data, filename)
-        return None
+        return Response({"error": "Unsupported format"}, status=400)
 
-    @staticmethod
-    def export_excel(data, filename):
+    def export_excel(self, data, filename):
         wb = Workbook()
         ws = wb.active
         ws.append(['ID', 'Message SQL', 'Created At', 'External Data'])
 
-        ws.append([data['id'], data['message'], str(data['created_at']), str(data['external_body'])])
+        ws.append([data['id'], data['message'], str(data['created_at']), str(data['payload'])])
 
         buffer = io.BytesIO()
         wb.save(buffer)
@@ -141,12 +158,11 @@ class MessageExportView(APIView):
             headers={'Content-Disposition': f'attachment; filename="{filename}.xlsx"'}
         )
 
-    @staticmethod
-    def export_docx(data, filename):
+    def export_docx(self, data, filename):
         doc = Document()
         doc.add_heading(f"Message ID: {data['id']}", 0)
         doc.add_paragraph(f"SQL Query: {data['message']}")
-        doc.add_paragraph(f"Result: {json.dumps(data['external_body'], indent=2, ensure_ascii=False)}")
+        doc.add_paragraph(f"Result: {json.dumps(data['payload'], indent=2, ensure_ascii=False)}")
 
         buffer = io.BytesIO()
         doc.save(buffer)
@@ -157,14 +173,13 @@ class MessageExportView(APIView):
             headers={'Content-Disposition': f'attachment; filename="{filename}.docx"'}
         )
 
-    @staticmethod
-    def export_pdf(data, filename):
+    def export_pdf(self, data, filename):
         buffer = io.BytesIO()
         p = canvas.Canvas(buffer)
         p.drawString(50, 800, f"Message ID: {data['id']}")
         p.drawString(50, 780, f"SQL: {data['message'][:60]}...")
 
-        p.drawString(50, 760, f"External Rows Count: {len(data['external_body'])}")
+        p.drawString(50, 760, f"External Rows Count: {len(data['payload'])}")
         p.showPage()
         p.save()
         buffer.seek(0)
