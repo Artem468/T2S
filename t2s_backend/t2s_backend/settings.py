@@ -43,6 +43,7 @@ CSRF_TRUSTED_ORIGINS = [
 engine = create_async_engine("sqlite+aiosqlite:///incity.db")
 ASYNC_SESSION = async_sessionmaker(engine, expire_on_commit=False)
 
+AI_API_KEY = os.getenv("AI_API_KEY")
 
 AUTH_USER_MODEL = "users.User"
 

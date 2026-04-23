@@ -2,7 +2,7 @@ from asgiref.sync import async_to_sync
 from celery import shared_task
 from channels.layers import get_channel_layer
 
-from core.ollama import generate_description, generate_sql
+from core.ai import generate_description, generate_sql
 
 
 def _notify_error(chat_id: int, text: str) -> None:

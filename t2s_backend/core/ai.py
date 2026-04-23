@@ -1,8 +1,8 @@
 import re
-import time
 
-import requests
 from django.conf import settings
+from openai import OpenAI
+from openai.types.chat import ChatCompletionMessageParam
 
 from core.utils import normalize_llm_sql
 
@@ -70,7 +70,6 @@ def extract_sql(raw: str) -> str:
     sql = text[pos:].strip()
     if "\n\n" in sql:
         sql = sql.split("\n\n")[0].strip()
-    # Только первый SQL-оператор (модель иногда дописывает второй запрос после «;»)
     c = sql.find(";")
     if c != -1 and c < len(sql) - 1:
         tail = sql[c + 1 :].strip()
@@ -98,75 +97,10 @@ def _extract_plain_description(raw: str) -> str:
     return text[:4000]
 
 
-def _sanitize_description(text: str) -> str:
-    """Убирает ссылки, нумерацию, markdown и «учебные» блоки из ответа модели."""
-    if not text:
-        return ""
-    s = text.strip()
-    s = re.sub(r"```[\s\S]*?```", " ", s)
-    s = re.sub(r"`([^`]+)`", r"\1", s)
-    s = re.sub(r"\*\*([^*]+)\*\*", r"\1", s)
-    s = re.sub(r"__([^_]+)__", r"\1", s)
-    s = re.sub(r"[*_#]{1,3}\s*", "", s)
-    s = re.sub(r"https?://\S+", "", s, flags=re.IGNORECASE)
-    s = re.sub(r"\bwww\.[^\s<>()]+", "", s, flags=re.IGNORECASE)
-    low = s.lower()
-    for marker in (
-        "взаимные ссылки",
-        "полезные ссылки",
-        "ссылки:",
-        "references:",
-        "useful links",
-        "w3schools",
-        "замечание:",
-        "примечание:",
-        "запись:",
-        "**запись",
-        "ключевых слов",
-        "в sql вам нужно",
-        "работать с базой",
-        "на данный момент",
-        "запросы:",
-    ):
-        i = low.find(marker)
-        if i != -1:
-            s = s[:i].strip()
-            low = s.lower()
-    lines = []
-    for line in s.splitlines():
-        t = line.strip()
-        t = re.sub(r"^[\-\*•]\s+", "", t)
-        t = re.sub(r"^\s*\d+\s*[\.)]\s*", "", t)
-        if t:
-            lines.append(t)
-    s = " ".join(lines) if lines else s
-    s = re.sub(r"\s+", " ", s).strip(" ,.;")
-    return s.strip()
-
-
-def _clamp_description_ru(text: str, max_sentences: int = 4, max_chars: int = 480) -> str:
-    """Не больше max_sentences предложений и max_chars символов — жёсткий потолок для UI."""
-    if not text:
-        return ""
-    s = re.sub(r"\s+", " ", text.strip())
-    if not s:
-        return ""
-    chunks = re.split(r"(?<=[.!?…])\s+", s)
-    parts = [c.strip() for c in chunks if c.strip()]
-    if not parts:
-        parts = [s]
-    out = " ".join(parts[:max_sentences]).strip()
-    if len(out) > max_chars:
-        cut = out[:max_chars].rsplit(" ", 1)[0]
-        out = (cut if len(cut) > 40 else out[:max_chars]).rstrip(",.; ") + "…"
-    return out
-
-
 def generate_sql(question: str) -> str:
     prompt = _build_sql_prompt(question)
     data = __process_request(prompt)
-    raw = data.get("response", "")
-    return normalize_llm_sql(extract_sql(raw))
+    return normalize_llm_sql(extract_sql(data))
 
 
 def generate_description(sql: str, user_question: str = "") -> str:
@@ -193,35 +127,32 @@ def generate_description(sql: str, user_question: str = "") -> str:
         "Ответ (только русский текст, только про этот вопрос и этот запрос):"
     )
     data = __process_request(prompt)
-    raw = data.get("response", "")
-    out = _clamp_description_ru(_sanitize_description(_extract_plain_description(raw)))
+    out = _extract_plain_description(data)
     return out if out else "Краткое описание запроса."
 
 
-def __process_request(prompt: str) -> dict:
-    base = getattr(settings, "OLLAMA_BASE", "http://127.0.0.1:11434")
-    model = getattr(settings, "OLLAMA_MODEL", "stable-code:3b")
-    read_timeout = int(getattr(settings, "OLLAMA_REQUEST_TIMEOUT", 300))
-    connect_timeout = int(getattr(settings, "OLLAMA_CONNECT_TIMEOUT", 15))
-    url = f"{base}/api/generate"
-    payload = {
-        "model": model,
-        "prompt": prompt,
-        "stream": False
-    }
-    timeouts = (connect_timeout, read_timeout)
-    for attempt in range(2):
-        try:
-            response = requests.post(url, json=payload, timeout=timeouts)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.HTTPError as e:
-            raise RuntimeError(f"Ollama HTTP {e.response.status_code}: {e.response.text}") from e
-        except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout) as e:
-            if attempt == 0:
-                time.sleep(2.0)
-                continue
-            raise RuntimeError(f"Ollama недоступен ({base}): {e}") from e
-        except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"Ollama недоступен ({base}): {e}") from e
-    raise RuntimeError(f"Ollama недоступен ({base}): нет ответа")  # pragma: no cover
+def __process_request(prompt: str) -> str | None:
+    url = "https://foundation-models.api.cloud.ru/v1"
+
+    client = OpenAI(
+        api_key=settings.AI_API_KEY,
+        base_url=url
+    )
+
+    messages: list[ChatCompletionMessageParam] = [
+        {
+            "role": "user",
+            "content": prompt
+        }
+    ]
+
+    response = client.chat.completions.create(
+        model="Qwen/Qwen3-Coder-Next",
+        max_tokens=2500,
+        temperature=0.5,
+        presence_penalty=0,
+        top_p=0.95,
+        messages=messages
+    )
+
+    return response.choices[0].message.content

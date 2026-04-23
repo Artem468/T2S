@@ -1,21 +1,4 @@
 services:
-  # GPU: docker-compose.gpu.yml; Windows: scripts\docker-compose-with-gpu.cmd или .ps1; Linux/macOS: .sh
-  ollama-service:
-    image: ollama/ollama:latest
-    container_name: ollama_sql
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_storage:/root/.ollama
-    entrypoint: /bin/sh -c "ollama serve & sleep 5 && ollama pull stable-code:3b && wait"
-    healthcheck:
-      test: [ "CMD", "ollama", "list" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - app-network
-
   t2s-db:
     image: postgres:15
     env_file: .env
@@ -45,8 +28,6 @@ services:
       - "8000"
     env_file: .env
     depends_on:
-      ollama-service:
-        condition: service_healthy
       t2s-db:
         condition: service_started
       redis:
@@ -67,8 +48,6 @@ services:
       - ./incity.db:/app/incity.db:ro
     env_file: .env
     depends_on:
-      ollama-service:
-        condition: service_healthy
       t2s-django:
         condition: service_started
       redis:
@@ -107,7 +86,6 @@ volumes:
   postgres_data:
   static_volume:
   redis_data:
-  ollama_storage:
 
 networks:
   app-network:

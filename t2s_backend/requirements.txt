@@ -4,8 +4,13 @@ aiosqlite==0.22.1
     # via t2s-backend
 amqp==5.3.1
     # via kombu
+annotated-types==0.7.0
+    # via pydantic
 anyio==4.13.0
-    # via watchfiles
+    # via
+    #   httpx
+    #   openai
+    #   watchfiles
 asgiref==3.11.1
     # via
     #   channels
@@ -23,7 +28,10 @@ celery==5.6.3
 celery-types==0.23.0
     # via t2s-backend
 certifi==2026.4.22
-    # via requests
+    # via
+    #   httpcore
+    #   httpx
+    #   requests
 channels==4.3.2
     # via
     #   channels-redis
@@ -50,7 +58,10 @@ click-repl==0.3.0
 colorama==0.4.6 ; sys_platform == 'win32'
     # via
     #   click
+    #   tqdm
     #   uvicorn
+distro==1.9.0
+    # via openai
 django==6.0.4
     # via
     #   channels
@@ -80,15 +91,24 @@ et-xmlfile==2.0.0
 greenlet==3.4.0 ; platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64'
     # via sqlalchemy
 h11==0.16.0
-    # via uvicorn
+    # via
+    #   httpcore
+    #   uvicorn
+httpcore==1.0.9
+    # via httpx
 httptools==0.7.1
     # via uvicorn
+httpx==0.28.1
+    # via openai
 idna==3.11
     # via
     #   anyio
+    #   httpx
     #   requests
 inflection==0.5.1
     # via drf-spectacular
+jiter==0.14.0
+    # via openai
 jsonschema==4.26.0
     # via drf-spectacular
 jsonschema-specifications==2025.9.1
@@ -99,6 +119,8 @@ lxml==6.1.0
     # via python-docx
 msgpack==1.1.2
     # via channels-redis
+openai==2.32.0
+    # via t2s-backend
 openpyxl==3.1.5
     # via t2s-backend
 packaging==26.1
@@ -109,6 +131,10 @@ prompt-toolkit==3.0.52
     # via click-repl
 psycopg2-binary==2.9.11
     # via t2s-backend
+pydantic==2.13.3
+    # via openai
+pydantic-core==2.46.3
+    # via pydantic
 python-dateutil==2.9.0.post0
     # via celery
 python-docx==1.2.0
@@ -139,17 +165,27 @@ rpds-py==0.30.0
     #   referencing
 six==1.17.0
     # via python-dateutil
+sniffio==1.3.1
+    # via openai
 sqlalchemy==2.0.49
     # via t2s-backend
 sqlparse==0.5.5
     # via django
+tqdm==4.67.3
+    # via openai
 typing-extensions==4.15.0
     # via
     #   anyio
     #   celery-types
+    #   openai
+    #   pydantic
+    #   pydantic-core
     #   python-docx
     #   referencing
     #   sqlalchemy
+    #   typing-inspection
+typing-inspection==0.4.2
+    # via pydantic
 tzdata==2026.1
     # via
     #   django
