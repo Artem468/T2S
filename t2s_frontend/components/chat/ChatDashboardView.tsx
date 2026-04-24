@@ -1,7 +1,21 @@
 "use client";
 
 import Image from "next/image";
-import { Check, Copy, Download, Pencil, Plus, Share2, Sparkles, Trash2, X } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  Check,
+  Copy,
+  Download,
+  Pencil,
+  Plus,
+  Search,
+  Share2,
+  Sparkles,
+  Trash2,
+  X,
+} from "lucide-react";
 import { QueryInputBar } from "@/components/QueryInputBar";
 import { MessageSquare } from "lucide-react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -144,7 +158,45 @@ export function ChatDashboardView({
   const copySource = sqlCopyText ?? sqlText ?? "";
   const [copyToast, setCopyToast] = useState<string | null>(null);
   const [mailingModalOpen, setMailingModalOpen] = useState(false);
+  const [tableFilter, setTableFilter] = useState("");
+  const [sortColumn, setSortColumn] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const toastTimerRef = useRef<number | null>(null);
+
+  const normalizedFilter = tableFilter.trim().toLowerCase();
+  const filteredRows = normalizedFilter
+    ? rows.filter((row) =>
+        columns.some((col) => {
+          const value = row[col];
+          if (value === null || value === undefined) return false;
+          return String(value).toLowerCase().includes(normalizedFilter);
+        }),
+      )
+    : rows;
+
+  const sortedRows = [...filteredRows].sort((a, b) => {
+    if (!sortColumn) return 0;
+    const aVal = a[sortColumn];
+    const bVal = b[sortColumn];
+    if (aVal == null && bVal == null) return 0;
+    if (aVal == null) return 1;
+    if (bVal == null) return -1;
+
+    const aNum = typeof aVal === "number" ? aVal : Number(aVal);
+    const bNum = typeof bVal === "number" ? bVal : Number(bVal);
+    const bothNumeric = Number.isFinite(aNum) && Number.isFinite(bNum);
+
+    let comparison = 0;
+    if (bothNumeric) {
+      comparison = aNum - bNum;
+    } else {
+      comparison = String(aVal).localeCompare(String(bVal), "ru", {
+        numeric: true,
+        sensitivity: "base",
+      });
+    }
+    return sortDirection === "asc" ? comparison : -comparison;
+  });
 
   useEffect(() => {
     return () => {
@@ -323,11 +375,29 @@ export function ChatDashboardView({
                         </div>
                       </header>
 
-                      <div className="overflow-x-auto px-2 pb-4 pt-2">
+                      <div className="px-3 pb-3 pt-3 sm:px-4">
+                        <label className="flex items-center gap-2 rounded-[12px] border border-[#e7e3ea] bg-[#faf9fb] px-3 py-2 text-[#8b8d94] focus-within:border-[#b9efe7] focus-within:text-[#0b7a73]">
+                          <Search className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+                          <input
+                            type="text"
+                            value={tableFilter}
+                            onChange={(e) => setTableFilter(e.target.value)}
+                            placeholder="Фильтр по таблице"
+                            className="w-full bg-transparent text-[13px] text-[#3c3f46] placeholder:text-[#a7a9b0] focus:outline-none"
+                          />
+                        </label>
+                      </div>
+
+                      <div className="overflow-x-auto px-2 pb-4 pt-1">
                         {columns.length === 0 ? (
                           <p className="px-4 py-8 text-center text-[14px] text-[#8C8C8C]">Нет данных для отображения.</p>
+                        ) : sortedRows.length === 0 ? (
+                          <p className="px-4 py-8 text-center text-[14px] text-[#8C8C8C]">По фильтру ничего не найдено.</p>
                         ) : (
-                          <table className="w-full min-w-[320px] border-separate border-spacing-0 text-left text-[13px]">
+                          <table
+                            className="w-full border-separate border-spacing-0 text-left text-[13px]"
+                            style={{ minWidth: `${Math.max(520, columns.length * 170)}px` }}
+                          >
                             <thead>
                               <tr className="text-[#8b8d94]">
                                 {columns.map((col, i) => (
@@ -335,15 +405,41 @@ export function ChatDashboardView({
                                     key={col}
                                     className={`bg-[#faf9fb] px-4 py-3 font-medium ${
                                       i === 0 ? "rounded-l-xl" : ""
-                                    } ${i === columns.length - 1 ? "rounded-r-xl" : ""}`}
+                                    } ${i === columns.length - 1 ? "rounded-r-xl" : ""} min-w-[150px]`}
                                   >
-                                    {col}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (sortColumn !== col) {
+                                          setSortColumn(col);
+                                          setSortDirection("asc");
+                                          return;
+                                        }
+                                        setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+                                      }}
+                                      className="group inline-flex items-center gap-1.5 whitespace-nowrap text-left text-[#6f727b] transition-colors hover:text-[#0b7a73]"
+                                      aria-label={`Сортировать по столбцу ${col}`}
+                                    >
+                                      <span>{col}</span>
+                                      {sortColumn === col ? (
+                                        sortDirection === "asc" ? (
+                                          <ArrowUp className="h-4 w-4 shrink-0 text-[#0b7a73]" strokeWidth={1.9} />
+                                        ) : (
+                                          <ArrowDown className="h-4 w-4 shrink-0 text-[#0b7a73]" strokeWidth={1.9} />
+                                        )
+                                      ) : (
+                                        <ArrowUpDown
+                                          className="h-4 w-4 shrink-0 text-[#a3a5ad] transition-colors group-hover:text-[#0b7a73]"
+                                          strokeWidth={1.9}
+                                        />
+                                      )}
+                                    </button>
                                   </th>
                                 ))}
                               </tr>
                             </thead>
                             <tbody>
-                              {rows.map((row, ri) => (
+                              {sortedRows.map((row, ri) => (
                                 <tr key={ri} className="border-b border-[#f1eef4] last:border-0">
                                   {columns.map((col) => (
                                     <td key={col} className="px-4 py-3 text-[#3c3f46]">
@@ -452,17 +548,17 @@ export function ChatDashboardView({
       </section>
 
       <aside className="order-3 flex min-h-0 w-full shrink-0 flex-col lg:order-none lg:w-1/5">
-        <div className="flex min-h-0 flex-1 flex-col rounded-t-[28px] bg-[#F5F3F8] p-4 sm:p-5 lg:rounded-t-none lg:rounded-tl-[50px] lg:p-6">
+        <div className="flex min-h-0 flex-1 flex-col gap-5 rounded-t-[28px] bg-[#F5F3F8] p-4 sm:gap-6 sm:p-5 lg:rounded-t-none lg:rounded-tl-[50px] lg:p-6">
           <h2 className="font-[var(--font-futuraround)] text-[20px] font-bold uppercase text-[#2d2e33]">
             ДОПОЛНИТЕЛЬНАЯ ИНФОРМАЦИЯ
           </h2>
 
           <p className="mt-2 text-[11px] uppercase tracking-[0.08em] text-[#8d8d93]">SQL КОД</p>
 
-          <div className="relative mt-3 min-h-[160px] overflow-hidden rounded-[10px] bg-[#e8e4ea] p-4 lg:min-h-[196px]">
+          <div className="relative min-h-[160px] overflow-hidden rounded-[10px] bg-[#e8e4ea] p-4 lg:min-h-[196px]">
             {sqlText ? (
               <>
-                <div className="max-h-[min(42vh,320px)] min-h-0 overflow-y-auto overflow-x-hidden pr-10 [scrollbar-gutter:stable] lg:max-h-[min(48vh,400px)]">
+                <div className="max-h-[min(42vh,320px)] min-h-0 overflow-y-auto overflow-x-hidden pr-10 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden [&_*]:[scrollbar-width:none] [&_*]:[-ms-overflow-style:none] [&_*::-webkit-scrollbar]:hidden lg:max-h-[min(48vh,400px)]">
                   <SyntaxHighlighter
                     language="sql"
                     style={sqlTheme}
@@ -508,7 +604,7 @@ export function ChatDashboardView({
             )}
           </div>
 
-          <div className="mt-4 rounded-[16px] border border-[#e0dde4] bg-white px-4 py-4 shadow-[0_4px_14px_rgba(0,0,0,0.05)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_9px_20px_rgba(0,0,0,0.08)] lg:mt-auto">
+          <div className="rounded-[16px] border border-[#e0dde4] bg-white px-4 py-4 shadow-[0_4px_14px_rgba(0,0,0,0.05)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_9px_20px_rgba(0,0,0,0.08)]">
             <p className="text-[18px] font-bold uppercase leading-none text-[#0b7a73]">СКАЧИВАНИЕ</p>
             <div className="mt-5 flex flex-wrap gap-2">
               <button
@@ -538,7 +634,7 @@ export function ChatDashboardView({
             </div>
           </div>
 
-          <div className="mt-4 rounded-[16px] border border-[#e0dde4] bg-white px-4 py-4 shadow-[0_4px_14px_rgba(0,0,0,0.05)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_9px_20px_rgba(0,0,0,0.08)] lg:mt-auto">
+          <div className="rounded-[16px] border border-[#e0dde4] bg-white px-4 py-4 shadow-[0_4px_14px_rgba(0,0,0,0.05)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_9px_20px_rgba(0,0,0,0.08)]">
             <p className="text-[18px] font-bold uppercase leading-none text-[#0b7a73]">РАССЫЛКА</p>
             <button
               type="button"
