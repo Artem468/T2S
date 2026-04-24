@@ -45,11 +45,9 @@ CSRF_TRUSTED_ORIGINS = [
     "https://tacitly-primary-butterfish.cloudpub.ru",
 ]
 
-
 AI_API_KEY = os.getenv("AI_API_KEY")
 
 AUTH_USER_MODEL = "users.User"
-
 
 INSTALLED_APPS = [
     "rest_framework",
@@ -127,6 +125,9 @@ REST_FRAMEWORK = {
         "rest_framework.renderers.BrowsableAPIRenderer",
     ),
     "DEFAULT_FILTER_BACKENDS": ("django_filters.rest_framework.DjangoFilterBackend",),
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.TokenAuthentication",
+    ],
 }
 
 CHANNEL_LAYERS = {
