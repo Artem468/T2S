@@ -114,6 +114,18 @@ export function ChatWorkspace() {
     setSelectedQueryMessageId(null);
   }, []);
 
+  const clearDisplayedAnswer = useCallback(() => {
+    setPhase("idle");
+    setUserBubble("");
+    setHasSql(false);
+    setHasData(false);
+    setSqlText(null);
+    setSqlCopyText(null);
+    setRows([]);
+    setWsChart(null);
+    setSummaryText("");
+  }, []);
+
   const closeWs = useCallback(() => {
     wsRef.current?.close();
     wsRef.current = null;
@@ -302,6 +314,8 @@ export function ChatWorkspace() {
         return;
       }
       setChatSwitchPending(true);
+      closeWs();
+      clearMainPanel();
       try {
         const chat = await fetchChat(id);
         setChats((prev) => prev.map((x) => (x.id === id ? { ...x, ...chat } : x)));
@@ -311,7 +325,6 @@ export function ChatWorkspace() {
         return;
       }
       setChatId(id);
-      setSelectedQueryMessageId(null);
       setExpandedChatId(id);
       try {
         await mergeChatHistory(id);
@@ -319,16 +332,44 @@ export function ChatWorkspace() {
         setChatSwitchPending(false);
       }
     },
-    [expandedChatId, mergeChatHistory]
+    [clearMainPanel, closeWs, expandedChatId, mergeChatHistory]
+  );
+
+  /** Открыть чат по ссылке без переключения «свернуть», если он уже был развёрнут. */
+  const handleOpenChatFromDeepLink = useCallback(
+    async (id: number) => {
+      setErrorMessage(null);
+      setChatSwitchPending(true);
+      closeWs();
+      clearMainPanel();
+      try {
+        const chat = await fetchChat(id);
+        setChats((prev) => prev.map((x) => (x.id === id ? { ...x, ...chat } : x)));
+      } catch {
+        setErrorMessage("Не удалось загрузить чат");
+        setChatSwitchPending(false);
+        return;
+      }
+      setChatId(id);
+      setExpandedChatId(id);
+      try {
+        await mergeChatHistory(id);
+      } finally {
+        setChatSwitchPending(false);
+      }
+    },
+    [clearMainPanel, closeWs, mergeChatHistory]
   );
 
   const handleSelectChatQuery = useCallback(
     async (_chatId: number, messageId: number) => {
       setChatSwitchPending(true);
+      closeWs();
       setChatId(_chatId);
       setExpandedChatId(_chatId);
       setSelectedQueryMessageId(messageId);
       setErrorMessage(null);
+      clearDisplayedAnswer();
       const chronological = await mergeChatHistory(_chatId);
       const userText = chronological.find((m) => m.id === messageId)?.message ?? "";
       try {
@@ -353,8 +394,38 @@ export function ChatWorkspace() {
         setChatSwitchPending(false);
       }
     },
-    [mergeChatHistory]
+    [clearDisplayedAnswer, closeWs, mergeChatHistory]
   );
+
+  /** Открытие чата/сообщения по ссылке «Поделиться» (?chat=&message=), затем очистка query из адреса. */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const c = params.get("chat");
+    if (!c || !/^\d+$/.test(c)) return;
+    const cid = Number(c);
+    const m = params.get("message");
+    const mid = m && /^\d+$/.test(m) ? Number(m) : null;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        if (mid != null) {
+          await handleSelectChatQuery(cid, mid);
+        } else {
+          await handleOpenChatFromDeepLink(cid);
+        }
+      } finally {
+        if (!cancelled) {
+          window.history.replaceState({}, "", window.location.pathname);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [handleOpenChatFromDeepLink, handleSelectChatQuery]);
 
   const handleRenameChat = useCallback(
     async (id: number, nextName: string) => {

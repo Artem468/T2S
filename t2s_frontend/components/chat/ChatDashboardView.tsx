@@ -8,7 +8,7 @@ import {
   Check,
   Copy,
   Database,
-  Download,
+  Menu,
   Pencil,
   Plus,
   Search,
@@ -77,6 +77,8 @@ export type ChatDashboardViewProps = {
   mailingMessageId?: number | null;
   onCreateMailing?: (payload: CreateMailingPayload) => void | Promise<void>;
   onOpenDatabasePicker?: () => void;
+  /** Скрыть баннер ошибки в шапке (моб. «как Issue»). */
+  onDismissError?: () => void;
 };
 
 const sqlTheme = {
@@ -120,6 +122,12 @@ function formatCell(value: unknown): string {
   return String(value);
 }
 
+function sentenceCaseRu(text: string): string {
+  const t = text.trim();
+  if (!t) return t;
+  return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase();
+}
+
 export function ChatDashboardView({
   phase,
   userBubble,
@@ -156,11 +164,20 @@ export function ChatDashboardView({
   mailingMessageId = null,
   onCreateMailing,
   onOpenDatabasePicker,
+  onDismissError,
 }: ChatDashboardViewProps) {
-  const showBubble = userBubble.length > 0 && (phase === "loading" || phase === "ready");
+  const showBubble =
+    userBubble.length > 0 &&
+    !chatSwitchPending &&
+    (phase === "loading" || phase === "ready");
   const copySource = sqlCopyText ?? sqlText ?? "";
-  const [copyToast, setCopyToast] = useState<string | null>(null);
+  const [feedbackToast, setFeedbackToast] = useState<{
+    message: string;
+    anchor: "sql" | "table" | "chart";
+  } | null>(null);
   const [mailingModalOpen, setMailingModalOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [mobileTab, setMobileTab] = useState<"chats" | "extras">("chats");
   const [tableFilter, setTableFilter] = useState("");
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
@@ -209,13 +226,23 @@ export function ChatDashboardView({
     };
   }, []);
 
-  const showCopyToast = (message: string) => {
-    setCopyToast(message);
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (!mobileOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [mobileOpen]);
+
+  const showFeedbackToast = (message: string, anchor: "sql" | "table" | "chart") => {
+    setFeedbackToast({ message, anchor });
     if (toastTimerRef.current != null) {
       window.clearTimeout(toastTimerRef.current);
     }
     toastTimerRef.current = window.setTimeout(() => {
-      setCopyToast(null);
+      setFeedbackToast(null);
       toastTimerRef.current = null;
     }, 1800);
   };
@@ -223,84 +250,357 @@ export function ChatDashboardView({
   const handleCopySql = async () => {
     try {
       await navigator.clipboard?.writeText(copySource);
-      showCopyToast("Скопировано");
+      showFeedbackToast("Скопировано", "sql");
     } catch {
-      showCopyToast("Не удалось скопировать");
+      showFeedbackToast("Не удалось скопировать", "sql");
     }
   };
 
-  return (
+  const buildShareUrl = (): string => {
+    if (typeof window === "undefined") return "";
+    const url = new URL(`${window.location.origin}${window.location.pathname}`);
+    if (workspaceChatId != null) url.searchParams.set("chat", String(workspaceChatId));
+    if (selectedQueryMessageId != null) url.searchParams.set("message", String(selectedQueryMessageId));
+    return url.toString();
+  };
+
+  /** Web Share API или копирование текста со ссылкой в буфер. */
+  const handleShareSection = async (kind: "table" | "chart") => {
+    const label = kind === "table" ? "Таблица результатов" : "График";
+    const url = buildShareUrl() || (typeof window !== "undefined" ? window.location.href : "");
+    const parts: string[] = [`T2S — ${label}`];
+    if (userBubble.trim()) parts.push(`Вопрос: ${userBubble.trim()}`);
+    if (summaryText.trim()) parts.push(summaryText.trim().slice(0, 800));
+    parts.push(`Открыть: ${url}`);
+    const text = parts.join("\n\n");
+
+    try {
+      if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+        try {
+          await navigator.share({ title: `T2S: ${label}`, text, url });
+          showFeedbackToast("Готово", kind);
+          return;
+        } catch (err) {
+          if (err instanceof DOMException && err.name === "AbortError") return;
+        }
+      }
+      await navigator.clipboard?.writeText(text);
+      showFeedbackToast("Скопировано", kind);
+    } catch {
+      showFeedbackToast("Не удалось поделиться", kind);
+    }
+  };
+
+  const closeMobile = () => setMobileOpen(false);
+
+  const chatsInner = (
     <>
-      <div className="flex h-[72px] items-center px-4 sm:px-5 lg:h-[10dvh]">
-        <Image src="/t2slogo.svg" alt="T2S" width={96} height={44} priority />
+      <div className="mb-4 hidden lg:block">
+        <p className="font-heading text-[20px] font-bold leading-none text-[#2d2e33]">Чаты</p>
+        <p className="mt-1 text-[12px] leading-snug text-[#8d8d93]">Все чаты и запросы в них</p>
       </div>
-    <div className="flex min-h-0 w-full flex-col bg-[#FBF8FC] text-[#26262b] lg:h-[90dvh] lg:flex-row">
-      <aside className="order-1 flex min-h-0 w-full shrink-0 flex-col lg:order-none lg:w-[240px] xl:w-1/5">
-        
 
-        <div className="flex min-h-0 flex-1 flex-col rounded-b-[28px] bg-[#F5F3F8] p-4 sm:p-5 lg:rounded-b-none lg:rounded-tr-[50px] lg:p-6">
-          <div className="mb-4">
-            <p className="font-[var(--font-futuraround)] text-[20px] font-bold uppercase leading-none text-[#2d2e33]">
-              ЧАТЫ
-            </p>
-            <p className="mt-1 text-[12px] leading-snug text-[#8d8d93]">Все чаты и запросы в них</p>
-          </div>
+      <button
+        type="button"
+        disabled={newChatPending}
+        className="mb-4 inline-flex w-full max-w-[180px] items-center justify-center gap-2 rounded-[7px] bg-[#0b7a73] px-4 py-2 text-[14px] font-semibold text-white shadow-sm transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-[#09665f] hover:shadow-sm disabled:pointer-events-none disabled:opacity-60"
+        onClick={() => {
+          onNewChat?.();
+          closeMobile();
+        }}
+      >
+        <Plus className="h-4 w-4" strokeWidth={2.2} />
+        Новый чат
+      </button>
 
+      <nav className="min-h-0 max-h-[36dvh] flex-1 space-y-2 overflow-y-auto pr-1 lg:max-h-none">
+        {sidebarChats.length === 0 ? (
+          <p className="pl-1 text-[13px] leading-6 text-[#8d8d93]">История появится после диалога с сервисом.</p>
+        ) : (
+          sidebarChats.map((c) => (
+            <ChatGroup
+              key={c.id}
+              chatId={c.id}
+              title={c.title}
+              active={c.active}
+              expanded={c.expanded}
+              queries={c.queries}
+              selectedQueryMessageId={selectedQueryMessageId}
+              workspaceChatId={workspaceChatId}
+              workspaceSql={workspaceSql}
+              onSelectRoot={() => onSelectChat?.(c.id)}
+              onSelectLeaf={(messageId) => {
+                onSelectChatQuery?.(c.id, messageId);
+                closeMobile();
+              }}
+              onRename={(nextName) => onRenameChat?.(c.id, nextName)}
+              onDelete={() => onDeleteChat?.(c.id)}
+              onCopyChatSql={() => onCopyChatSql?.(c.id)}
+              onCopyLeafSql={(messageId) => onCopyLeafSql?.(c.id, messageId)}
+            />
+          ))
+        )}
+      </nav>
+
+      <div className="mt-4 rounded-[16px] border border-[#e0dde4] bg-white px-4 py-4 shadow-sm transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-sm">
+        <p className="font-heading text-[18px] font-bold leading-none text-[#0b7a73]">Базы данных</p>
+        <button
+          type="button"
+          className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-[12px] bg-[#c0eeea] py-3 text-[14px] font-semibold text-[#0b7a73] transition-colors hover:bg-[#b4e8e3]"
+          onClick={() => {
+            onOpenDatabasePicker?.();
+            closeMobile();
+          }}
+        >
+          <Database className="h-4 w-4" strokeWidth={1.8} />
+          Выбрать базу данных
+        </button>
+      </div>
+    </>
+  );
+
+  const extrasInner = (
+    <>
+      <h2 className="hidden font-heading text-[20px] font-bold text-[#2d2e33] lg:block">Дополнительная информация</h2>
+
+      <p className="mt-2 font-sans text-[11px] tracking-normal text-[#8d8d93]">Код SQL</p>
+
+      <div className="relative min-h-[160px] overflow-hidden rounded-[10px] bg-[#e8e4ea] p-4 lg:min-h-[196px]">
+        {sqlText ? (
+          <>
+            <div className="max-h-[min(42vh,320px)] min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain pr-12 pb-12 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:max-h-[min(48vh,400px)]">
+              <SyntaxHighlighter
+                language="sql"
+                style={sqlTheme}
+                wrapLongLines
+                customStyle={{
+                  margin: 0,
+                  padding: 0,
+                  background: "transparent",
+                  overflow: "visible",
+                }}
+                codeTagProps={{
+                  style: {
+                    fontSize: "11px",
+                    lineHeight: "1.7",
+                  },
+                }}
+              >
+                {sqlText}
+              </SyntaxHighlighter>
+            </div>
+
+            <div className="absolute bottom-3 right-3">
+              {feedbackToast?.anchor === "sql" && (
+                <div className="pointer-events-none absolute bottom-full right-0 z-20 mb-1 whitespace-nowrap rounded-md bg-[#0b7a73] px-2.5 py-1 font-sans text-[12px] font-medium text-white shadow-sm">
+                  {feedbackToast.message}
+                </div>
+              )}
+              <button
+                type="button"
+                className="rounded-[10px] bg-[#d0ccc9] p-2 text-[#7a7d84]"
+                aria-label="Копировать SQL"
+                onClick={() => void handleCopySql()}
+              >
+                <Copy className="h-4 w-4" strokeWidth={1.8} />
+              </button>
+            </div>
+          </>
+        ) : phase === "loading" || chatSwitchPending || newChatPending ? (
+          <SqlCodeSkeleton />
+        ) : (
+          <p className="t2s-enter pt-2 text-[13px] leading-6 text-[#8d8d93]">Здесь появится сгенерированный SQL.</p>
+        )}
+      </div>
+
+      <div className="rounded-[16px] border border-[#e0dde4] bg-white px-4 py-4 shadow-sm transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-sm">
+        <p className="font-heading text-[18px] font-bold leading-none text-[#0b7a73]">Скачивание</p>
+        <div className="mt-5 flex flex-wrap gap-2">
           <button
             type="button"
-            disabled={newChatPending}
-            className="mb-4 inline-flex w-full max-w-[180px] items-center justify-center gap-2 rounded-[7px] bg-[#0b7a73] px-4 py-2 text-[14px] font-semibold text-white shadow-[0_6px_16px_rgba(11,122,115,0.28)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-[#09665f] hover:shadow-[0_10px_22px_rgba(11,122,115,0.30)] disabled:pointer-events-none disabled:opacity-60"
-            onClick={() => onNewChat?.()}
+            disabled={!canDownload}
+            className="rounded-full bg-[#e1f6f3] px-4 py-2 text-[13px] font-semibold text-[#0b7a73] disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => void onDownloadFormat?.("xlsx")}
           >
-            <Plus className="h-4 w-4" strokeWidth={2.2} />
-            Новый чат
+            Скачать Excel
           </button>
+          <button
+            type="button"
+            disabled={!canDownload}
+            className="rounded-full bg-[#e1f6f3] px-4 py-2 text-[13px] font-semibold text-[#0b7a73] disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => void onDownloadFormat?.("pdf")}
+          >
+            Скачать PDF
+          </button>
+          <button
+            type="button"
+            disabled={!canDownload}
+            className="rounded-full bg-[#e1f6f3] px-4 py-2 text-[13px] font-semibold text-[#0b7a73] disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => void onDownloadFormat?.("docx")}
+          >
+            Скачать DOCX
+          </button>
+        </div>
+      </div>
 
-          <nav className="min-h-0 max-h-[36dvh] flex-1 space-y-2 overflow-y-auto pr-1 lg:max-h-none">
-            {sidebarChats.length === 0 ? (
-              <p className="pl-1 text-[13px] leading-6 text-[#8d8d93]">История появится после диалога с сервисом.</p>
-            ) : (
-              sidebarChats.map((c) => (
-                <ChatGroup
-                  key={c.id}
-                  chatId={c.id}
-                  title={c.title}
-                  active={c.active}
-                  expanded={c.expanded}
-                  queries={c.queries}
-                  selectedQueryMessageId={selectedQueryMessageId}
-                  workspaceChatId={workspaceChatId}
-                  workspaceSql={workspaceSql}
-                  onSelectRoot={() => onSelectChat?.(c.id)}
-                  onSelectLeaf={(messageId) => onSelectChatQuery?.(c.id, messageId)}
-                  onRename={(nextName) => onRenameChat?.(c.id, nextName)}
-                  onDelete={() => onDeleteChat?.(c.id)}
-                  onCopyChatSql={() => onCopyChatSql?.(c.id)}
-                  onCopyLeafSql={(messageId) => onCopyLeafSql?.(c.id, messageId)}
-                />
-              ))
-            )}
-          </nav>
+      <div className="rounded-[16px] border border-[#e0dde4] bg-white px-4 py-4 shadow-sm transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-sm">
+        <p className="font-heading text-[18px] font-bold leading-none text-[#0b7a73]">Рассылка</p>
+        <button
+          type="button"
+          disabled={mailingMessageId == null}
+          className="mt-5 w-full rounded-[12px] bg-[#c0eeea] py-3 text-[14px] font-semibold text-[#0b7a73] transition-colors hover:bg-[#b4e8e3] disabled:cursor-not-allowed disabled:opacity-55"
+          onClick={() => {
+            setMailingModalOpen(true);
+            closeMobile();
+          }}
+        >
+          Отправить ссылку
+        </button>
+      </div>
+    </>
+  );
 
-          <div className="mt-4 rounded-[16px] border border-[#e0dde4] bg-white px-4 py-4 shadow-[0_4px_14px_rgba(0,0,0,0.05)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_9px_20px_rgba(0,0,0,0.08)]">
-            <p className="text-[18px] font-bold uppercase leading-none text-[#0b7a73]">БАЗЫ ДАННЫХ</p>
+  return (
+    <>
+      <header className="flex h-[72px] items-center gap-2 border-b border-[#e8e4ee] bg-gradient-to-b from-white to-[#f3f0f6] px-3 sm:gap-3 sm:px-5 lg:h-[10dvh] lg:border-transparent lg:bg-gradient-to-b lg:from-transparent lg:to-transparent">
+        <button
+          type="button"
+          className="shrink-0 rounded-xl p-2 text-[#0b7a73] transition-colors hover:bg-[#0b7a73]/10 lg:hidden"
+          aria-expanded={mobileOpen}
+          aria-label="Открыть меню"
+          onClick={() => {
+            if (mobileOpen) {
+              setMobileOpen(false);
+            } else {
+              setMobileTab("chats");
+              setMobileOpen(true);
+            }
+          }}
+        >
+          <Menu className="h-7 w-7" strokeWidth={2} />
+        </button>
+        <Image
+          src="/t2slogo.svg"
+          alt="T2S"
+          width={96}
+          height={44}
+          priority
+          className="h-9 w-auto shrink-0 sm:h-10 lg:h-11"
+        />
+        <div className="min-w-0 flex-1 lg:flex-none" aria-hidden="true" />
+        {errorMessage != null && errorMessage.trim() !== "" && (
+          <div
+            className="flex max-w-[min(220px,52vw)] shrink-0 items-center gap-1 rounded-full bg-[#e53935] py-0.5 pl-1 pr-0.5 text-white shadow-sm ring-1 ring-black/5 sm:max-w-[260px] sm:gap-1.5 sm:pl-1.5 sm:pr-1"
+            title={errorMessage}
+          >
+            <span
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-black/15 text-[12px] font-bold leading-none"
+              aria-hidden
+            >
+              !
+            </span>
+            <span className="min-w-0 flex-1 truncate text-left text-[11px] font-semibold leading-tight sm:text-xs">
+              Ошибка
+            </span>
+            {onDismissError != null ? (
+              <button
+                type="button"
+                className="shrink-0 rounded-full p-1.5 text-white/95 transition-colors hover:bg-black/15"
+                aria-label="Скрыть уведомление"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDismissError();
+                }}
+              >
+                <X className="h-3.5 w-3.5" strokeWidth={2.5} />
+              </button>
+            ) : null}
+          </div>
+        )}
+      </header>
+
+      {mobileOpen && (
+        <button
+          type="button"
+          className="fixed inset-x-0 bottom-0 top-[calc(72px+10px)] z-[115] backdrop-blur-[1px] lg:hidden"
+          aria-label="Закрыть панель"
+          onClick={closeMobile}
+        />
+      )}
+
+      {mobileOpen && (
+        <div className="fixed inset-x-0 bottom-0 left-0 top-[calc(72px+10px)] z-[125] flex flex-col overflow-hidden rounded-t-[16px] border border-[#e2dfe6]/80 bg-[#fbfafc] shadow-[0_-8px_28px_rgba(15,23,42,0.1)] lg:hidden">
+          <div className="flex shrink-0 items-center gap-2 border-b border-[#e4e0ea] bg-[#F5F3F8] px-3 py-2.5">
+            <div className="relative flex min-w-0 flex-1 rounded-[10px] bg-[#e4e0ea]/70 p-0.5">
+              <span
+                className="absolute bottom-0.5 top-0.5 w-[calc(50%-6px)] rounded-[8px] bg-white shadow-sm transition-[left] duration-300 ease-out motion-reduce:transition-none"
+                style={{
+                  left: mobileTab === "chats" ? "4px" : "calc(50% + 1px)",
+                }}
+                aria-hidden
+              />
+              <button
+                type="button"
+                className={`relative z-[1] min-w-0 flex-1 rounded-[8px] py-2 text-center font-heading text-[14px] font-semibold transition-colors duration-300 ease-out ${
+                  mobileTab === "chats" ? "text-[#0b7a73]" : "text-[#5f6168]"
+                }`}
+                onClick={() => setMobileTab("chats")}
+              >
+                Чаты
+              </button>
+              <button
+                type="button"
+                className={`relative z-[1] min-w-0 flex-1 rounded-[8px] py-2 text-center font-heading text-[14px] font-semibold transition-colors duration-300 ease-out ${
+                  mobileTab === "extras" ? "text-[#0b7a73]" : "text-[#5f6168]"
+                }`}
+                onClick={() => setMobileTab("extras")}
+              >
+                Дополнительно
+              </button>
+            </div>
             <button
               type="button"
-              className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-[12px] bg-[#c0eeea] py-3 text-[14px] font-semibold text-[#0b7a73] transition-colors hover:bg-[#b4e8e3]"
-              onClick={() => onOpenDatabasePicker?.()}
+              className="shrink-0 rounded-lg p-2 text-[#5f6168] transition-colors hover:bg-black/[0.06]"
+              aria-label="Закрыть"
+              onClick={closeMobile}
             >
-              <Database className="h-4 w-4" strokeWidth={1.8} />
-              Выбрать базу данных
+              <X className="h-5 w-5" strokeWidth={2} />
             </button>
           </div>
+          <div className="relative min-h-0 flex-1">
+            <div
+              className={`absolute inset-0 overflow-y-auto bg-[#F5F3F8] p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-sm sm:p-5 transition-opacity duration-300 ease-out motion-reduce:transition-none ${
+                mobileTab === "chats" ? "z-[2] opacity-100" : "pointer-events-none z-0 opacity-0"
+              }`}
+            >
+              {chatsInner}
+            </div>
+            <div
+              className={`absolute inset-0 flex min-h-0 flex-col gap-5 overflow-y-auto bg-[#F5F3F8] p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-sm sm:gap-6 sm:p-5 transition-opacity duration-300 ease-out motion-reduce:transition-none ${
+                mobileTab === "extras" ? "z-[2] opacity-100" : "pointer-events-none z-0 opacity-0"
+              }`}
+            >
+              {extrasInner}
+            </div>
+          </div>
+        </div>
+      )}
+
+    <div className="flex min-h-0 w-full flex-col text-[#26262b] lg:h-[90dvh] lg:flex-row">
+      <aside className="order-1 hidden min-h-0 w-full shrink-0 flex-col lg:flex lg:order-none lg:w-[240px] xl:w-1/5">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto rounded-b-[28px] bg-[#F5F3F8] p-4 shadow-sm sm:p-5 lg:rounded-b-none lg:rounded-tr-[50px] lg:p-6">
+          {chatsInner}
         </div>
       </aside>
 
       <section className="order-2 relative flex min-w-0 flex-1 flex-col bg-[#fbfafc] px-3 pt-4 sm:px-5 sm:pt-6 lg:order-none lg:px-4 xl:px-5">
         <div className="flex-1 overflow-y-auto pb-8 lg:pb-36">
-          <div className="mx-auto max-w-[860px]">
+          <div
+            className="mx-auto max-w-[860px] min-h-[min(520px,72dvh)]"
+            aria-busy={phase === "loading" || chatSwitchPending || newChatPending}
+          >
             {phase === "idle" && !chatSwitchPending && (
-              <div className="mx-auto mt-24 flex h-[260px] max-w-[760px] flex-col items-center justify-center rounded-[18px] border border-dashed border-[#d8d5dd] bg-white/80 px-8 text-center shadow-[0_2px_14px_rgba(0,0,0,0.04)]">
+              <div className="t2s-enter mx-auto mt-24 flex h-[260px] max-w-[760px] flex-col items-center justify-center rounded-[18px] border border-dashed border-[#d8d5dd] bg-white/80 px-8 text-center shadow-sm">
                 <Sparkles className="mb-3 h-8 w-8 text-[#0b7a73]/70" strokeWidth={1.6} />
                 <p className="text-[15px] leading-7 text-[#8f8f96]">
                   Задайте вопрос в поле ниже — здесь появятся ответ, таблица и график.
@@ -309,9 +609,9 @@ export function ChatDashboardView({
             )}
 
             {phase === "loading" && (
-              <div className="mx-auto flex max-w-[760px] flex-col gap-5">
+              <div className="t2s-enter mx-auto flex max-w-[760px] flex-col gap-5">
                 {showBubble && (
-                  <div className="ml-auto max-w-[90%] rounded-[10px] bg-[#b9efe7] px-5 py-3 text-[14px] leading-6 text-[#283136] shadow-[0_6px_18px_rgba(11,122,115,0.14)] motion-safe:animate-pulse">
+                  <div className="t2s-enter ml-auto max-w-[90%] rounded-[10px] bg-[#b9efe7] px-5 py-3 text-[14px] leading-6 text-[#283136] shadow-sm motion-safe:animate-pulse">
                     {userBubble}
                   </div>
                 )}
@@ -327,17 +627,17 @@ export function ChatDashboardView({
             )}
 
             {chatSwitchPending && phase !== "loading" && (
-              <div className="mx-auto flex max-w-[760px] flex-col gap-5">
-                <article className="rounded-[10px] border border-[#e5e2e8] bg-white px-4 py-4 shadow-[0_4px_16px_rgba(0,0,0,0.10)] sm:px-5">
+              <div className="t2s-enter mx-auto flex max-w-[760px] flex-col gap-5">
+                <article className="rounded-[10px] border border-[#e5e2e8] bg-white px-4 py-4 shadow-sm sm:px-5">
                   <div className="flex items-center justify-between gap-3">
-                    <h2 className="font-[var(--font-futuraround)] text-[12px] font-bold uppercase tracking-[0.06em] text-[#0b7a73]">
-                      ЗАГРУЗКА ЧАТА
-                    </h2>
+                    <h2 className="font-sans text-[12px] font-bold tracking-normal text-[#0b7a73]">Загрузка чата</h2>
                     <Sparkles className="h-6 w-6 shrink-0 animate-pulse text-[#0b7a73]" strokeWidth={1.5} />
                   </div>
                   <div className="mt-8 flex flex-col items-center gap-5 py-4">
                     <div className="h-10 w-10 rounded-full border-2 border-[#d9d5dd] border-t-[#0b7a73] motion-safe:animate-spin" />
-                    <p className="text-center text-[15px] leading-7 text-[#4b4d55]">Подгружаю данные выбранного чата…</p>
+                    <p className="t2s-phrase-in text-center text-[15px] leading-7 text-[#4b4d55]">
+                      Подгружаю данные выбранного чата…
+                    </p>
                   </div>
                 </article>
                 <PanelSkeleton title="Таблица" />
@@ -345,18 +645,16 @@ export function ChatDashboardView({
               </div>
             )}
 
-            {phase === "ready" && (
-              <div className="mx-auto flex max-w-[760px] flex-col gap-5">
+            {phase === "ready" && !chatSwitchPending && (
+              <div className="t2s-enter mx-auto flex max-w-[760px] flex-col gap-5">
                 {showBubble && (
-                  <div className="ml-auto max-w-[90%] rounded-[10px] bg-[#b9efe7] px-5 py-3 text-[14px] leading-6 text-[#283136] shadow-[0_6px_18px_rgba(11,122,115,0.14)] transition-transform duration-200 ease-out hover:-translate-y-0.5">
+                  <div className="t2s-enter ml-auto max-w-[90%] rounded-[10px] bg-[#b9efe7] px-5 py-3 text-[14px] leading-6 text-[#283136] shadow-sm transition-transform duration-200 ease-out hover:-translate-y-0.5">
                     {userBubble}
                   </div>
                 )}
 
-                <article className="rounded-[10px] border border-[#e5e2e8] bg-white px-4 py-4 shadow-[0_4px_16px_rgba(0,0,0,0.10)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_10px_22px_rgba(0,0,0,0.12)] sm:px-5">
-                  <h2 className="font-[var(--font-futuraround)] text-[12px] font-bold uppercase tracking-[0.06em] text-[#0b7a73]">
-                    ОТВЕТ
-                  </h2>
+                <article className="rounded-[10px] border border-[#e5e2e8] bg-white px-4 py-4 shadow-sm transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-sm sm:px-5">
+                  <h2 className="font-sans text-[12px] font-bold tracking-normal text-[#0b7a73]">Ответ</h2>
                   <p className="mt-1 text-[12px] leading-snug text-[#8d8d93]">
                     Что делает запрос и какой это отчёт для пользователя
                   </p>
@@ -364,7 +662,7 @@ export function ChatDashboardView({
                     {summaryText || "—"}
                   </p>
                   <div className="mt-5 flex flex-wrap gap-2">
-                    <DonePill label="SQL создан" />
+                    <DonePill label="Создан SQL" />
                     <DonePill label="Таблица готова" />
                     <DonePill label="График готов" />
                   </div>
@@ -377,33 +675,41 @@ export function ChatDashboardView({
                   </>
                 ) : (
                   <>
-                    <article className="overflow-hidden rounded-[10px] border border-[#e5e2e8] bg-white shadow-[0_4px_16px_rgba(0,0,0,0.10)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_10px_22px_rgba(0,0,0,0.12)]">
-                      <header className="flex items-center justify-between bg-[#f8f6fa] px-4 py-4 sm:px-5">
-                        <h3 className="font-[var(--font-futuraround)] text-[13px] font-bold text-[#2f3138]">Таблица</h3>
-                        <div className="flex gap-3 text-[#666873]">
-                          <button type="button" className="rounded-full p-1.5 hover:bg-black/5" aria-label="Скачать">
-                            <Download className="h-4.5 w-4.5" strokeWidth={1.6} />
-                          </button>
-                          <button type="button" className="rounded-full p-1.5 hover:bg-black/5" aria-label="Поделиться">
+                    <article className="overflow-visible rounded-[10px] border border-[#e5e2e8] bg-white shadow-sm transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-sm">
+                      <header className="relative z-10 flex items-center justify-between overflow-visible bg-[#f8f6fa] px-4 py-4 sm:px-5">
+                        <h3 className="font-heading text-[13px] font-bold text-[#2f3138]">Таблица</h3>
+                        <div className="relative shrink-0">
+                          {feedbackToast?.anchor === "table" && (
+                            <div className="pointer-events-none absolute bottom-full right-0 z-20 mb-1 whitespace-nowrap rounded-md bg-[#0b7a73] px-2.5 py-1 font-sans text-[12px] font-medium text-white shadow-sm">
+                              {feedbackToast.message}
+                            </div>
+                          )}
+                          <button
+                            type="button"
+                            className="rounded-full p-1.5 text-[#666873] hover:bg-black/5"
+                            aria-label="Поделиться таблицей"
+                            onClick={() => void handleShareSection("table")}
+                          >
                             <Share2 className="h-4.5 w-4.5" strokeWidth={1.6} />
                           </button>
                         </div>
                       </header>
 
-                      <div className="px-3 pb-3 pt-3 sm:px-4">
-                        <label className="flex items-center gap-2 rounded-[12px] border border-[#e7e3ea] bg-[#faf9fb] px-3 py-2 text-[#8b8d94] focus-within:border-[#b9efe7] focus-within:text-[#0b7a73]">
-                          <Search className="h-4 w-4 shrink-0" strokeWidth={1.9} />
-                          <input
-                            type="text"
-                            value={tableFilter}
-                            onChange={(e) => setTableFilter(e.target.value)}
-                            placeholder="Фильтр по таблице"
-                            className="w-full bg-transparent text-[13px] text-[#3c3f46] placeholder:text-[#a7a9b0] focus:outline-none"
-                          />
-                        </label>
-                      </div>
+                      <div className="overflow-hidden rounded-b-[10px]">
+                        <div className="px-3 pb-3 pt-3 sm:px-4">
+                          <label className="flex items-center gap-2 rounded-[12px] border border-[#e7e3ea] bg-[#faf9fb] px-3 py-2 text-[#8b8d94] focus-within:border-[#b9efe7] focus-within:text-[#0b7a73]">
+                            <Search className="h-4 w-4 shrink-0" strokeWidth={1.9} />
+                            <input
+                              type="text"
+                              value={tableFilter}
+                              onChange={(e) => setTableFilter(e.target.value)}
+                              placeholder="Фильтр по таблице"
+                              className="w-full bg-transparent text-[13px] text-[#3c3f46] placeholder:text-[#a7a9b0] focus:outline-none"
+                            />
+                          </label>
+                        </div>
 
-                      <div className="overflow-x-auto px-2 pb-4 pt-1">
+                        <div className="overflow-x-auto px-2 pb-4 pt-1">
                         {columns.length === 0 ? (
                           <p className="px-4 py-8 text-center text-[14px] text-[#8C8C8C]">Нет данных для отображения.</p>
                         ) : sortedRows.length === 0 ? (
@@ -466,23 +772,31 @@ export function ChatDashboardView({
                             </tbody>
                           </table>
                         )}
+                        </div>
                       </div>
                     </article>
 
-                    <article className="overflow-hidden rounded-[10px] border border-[#e5e2e8] bg-white shadow-[0_4px_16px_rgba(0,0,0,0.10)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_10px_22px_rgba(0,0,0,0.12)]">
-                      <header className="flex items-center justify-between bg-[#f8f6fa] px-4 py-4 sm:px-5">
-                        <h3 className="font-[var(--font-futuraround)] text-[13px] font-bold text-[#2f3138]">График</h3>
-                        <div className="flex gap-3 text-[#666873]">
-                          <button type="button" className="rounded-full p-1.5 hover:bg-black/5" aria-label="Скачать">
-                            <Download className="h-4.5 w-4.5" strokeWidth={1.6} />
-                          </button>
-                          <button type="button" className="rounded-full p-1.5 hover:bg-black/5" aria-label="Поделиться">
+                    <article className="overflow-visible rounded-[10px] border border-[#e5e2e8] bg-white shadow-sm transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-sm">
+                      <header className="relative z-10 flex items-center justify-between overflow-visible bg-[#f8f6fa] px-4 py-4 sm:px-5">
+                        <h3 className="font-heading text-[13px] font-bold text-[#2f3138]">График</h3>
+                        <div className="relative shrink-0">
+                          {feedbackToast?.anchor === "chart" && (
+                            <div className="pointer-events-none absolute bottom-full right-0 z-20 mb-1 whitespace-nowrap rounded-md bg-[#0b7a73] px-2.5 py-1 font-sans text-[12px] font-medium text-white shadow-sm">
+                              {feedbackToast.message}
+                            </div>
+                          )}
+                          <button
+                            type="button"
+                            className="rounded-full p-1.5 text-[#666873] hover:bg-black/5"
+                            aria-label="Поделиться графиком"
+                            onClick={() => void handleShareSection("chart")}
+                          >
                             <Share2 className="h-4.5 w-4.5" strokeWidth={1.6} />
                           </button>
                         </div>
                       </header>
 
-                      <div className="px-4 py-6 sm:px-5">
+                      <div className="overflow-hidden rounded-b-[10px] px-4 py-6 sm:px-5">
                         {chartBars.length === 0 ? (
                           <p className="py-8 text-center text-[14px] text-[#8C8C8C]">Нет данных для построения графика.</p>
                         ) : (
@@ -503,7 +817,7 @@ export function ChatDashboardView({
                                 const isDot = normalized < 0.15;
                                 return (
                                   <div key={`${item.label}-${i}`} className="flex w-[76px] shrink-0 flex-col items-center justify-end">
-                                    <span className="mb-2 text-[11px] font-medium tabular-nums text-[#4e525c]">
+                                    <span className="mb-2 font-sans text-[11px] font-medium tabular-nums text-[#4e525c]">
                                       {Number.isInteger(item.value) ? item.value : item.value.toFixed(2)}
                                     </span>
                                     <div
@@ -527,7 +841,7 @@ export function ChatDashboardView({
                                       }
                                     />
                                     <span
-                                      className="mt-2 block w-full truncate px-1 text-center text-[11px] leading-tight text-[#5a5d66]"
+                                      className="mt-2 block w-full truncate px-1 text-center font-sans text-[11px] leading-tight text-[#5a5d66]"
                                       title={item.label}
                                     >
                                       {item.label}
@@ -562,108 +876,9 @@ export function ChatDashboardView({
         </div>
       </section>
 
-      <aside className="order-3 flex min-h-0 w-full shrink-0 flex-col lg:order-none lg:w-[240px] xl:w-1/5">
-        <div className="flex min-h-0 flex-1 flex-col gap-5 rounded-t-[28px] bg-[#F5F3F8] p-4 sm:gap-6 sm:p-5 lg:rounded-t-none lg:rounded-tl-[50px] lg:p-6">
-          <h2 className="font-[var(--font-futuraround)] text-[20px] font-bold uppercase text-[#2d2e33]">
-            ДОПОЛНИТЕЛЬНАЯ ИНФОРМАЦИЯ
-          </h2>
-
-          <p className="mt-2 text-[11px] uppercase tracking-[0.08em] text-[#8d8d93]">SQL КОД</p>
-
-          <div className="relative min-h-[160px] overflow-hidden rounded-[10px] bg-[#e8e4ea] p-4 lg:min-h-[196px]">
-            {sqlText ? (
-                <>
-                  <div className="max-h-[min(42vh,320px)] min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain pr-12 pb-12 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:max-h-[min(48vh,400px)]">
-                    <SyntaxHighlighter
-                        language="sql"
-                        style={sqlTheme}
-                        wrapLongLines
-                        customStyle={{
-                          margin: 0,
-                          padding: 0,
-                          background: "transparent",
-                          overflow: "visible",
-                        }}
-                        codeTagProps={{
-                          style: {
-                            fontSize: "11px",
-                            lineHeight: "1.7",
-                          },
-                        }}
-                    >
-                      {sqlText}
-                    </SyntaxHighlighter>
-                  </div>
-
-                  <button
-                      type="button"
-                      className="absolute bottom-3 right-3 rounded-[10px] bg-[#d0ccc9] p-2 text-[#7a7d84]"
-                      aria-label="Копировать SQL"
-                      onClick={() => void handleCopySql()}
-                  >
-                    <Copy className="h-4 w-4" strokeWidth={1.8} />
-                  </button>
-
-                  {copyToast && (
-                      <div className="pointer-events-none absolute bottom-14 right-3 rounded-md bg-[#0b7a73] px-2.5 py-1 text-[11px] font-medium text-white shadow-[0_8px_18px_rgba(11,122,115,0.35)]">
-                        {copyToast}
-                      </div>
-                  )}
-                </>
-            ) : phase === "loading" ? (
-                <div className="space-y-2 pt-1">
-                  <div className="h-2.5 w-[88%] rounded-full bg-[#d9d5dd] motion-safe:animate-pulse" />
-                  <div className="h-2.5 w-[62%] rounded-full bg-[#d9d5dd] motion-safe:animate-pulse" />
-                  <div className="h-2.5 w-full rounded-full bg-[#d9d5dd] motion-safe:animate-pulse" />
-                  <div className="h-2.5 w-[72%] rounded-full bg-[#d9d5dd] motion-safe:animate-pulse" />
-                </div>
-            ) : (
-                <p className="pt-2 text-[13px] leading-6 text-[#8d8d93]">Здесь появится сгенерированный SQL.</p>
-            )}
-          </div>
-
-          <div className="rounded-[16px] border border-[#e0dde4] bg-white px-4 py-4 shadow-[0_4px_14px_rgba(0,0,0,0.05)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_9px_20px_rgba(0,0,0,0.08)]">
-            <p className="text-[18px] font-bold uppercase leading-none text-[#0b7a73]">СКАЧИВАНИЕ</p>
-            <div className="mt-5 flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={!canDownload}
-                className="rounded-full bg-[#e1f6f3] px-4 py-2 text-[13px] font-semibold text-[#0b7a73] disabled:cursor-not-allowed disabled:opacity-50"
-                onClick={() => void onDownloadFormat?.("xlsx")}
-              >
-                Скачать Excel
-              </button>
-              <button
-                type="button"
-                disabled={!canDownload}
-                className="rounded-full bg-[#e1f6f3] px-4 py-2 text-[13px] font-semibold text-[#0b7a73] disabled:cursor-not-allowed disabled:opacity-50"
-                onClick={() => void onDownloadFormat?.("pdf")}
-              >
-                Скачать PDF
-              </button>
-              <button
-                type="button"
-                disabled={!canDownload}
-                className="rounded-full bg-[#e1f6f3] px-4 py-2 text-[13px] font-semibold text-[#0b7a73] disabled:cursor-not-allowed disabled:opacity-50"
-                onClick={() => void onDownloadFormat?.("docx")}
-              >
-                Скачать DOCX
-              </button>
-            </div>
-          </div>
-
-          <div className="rounded-[16px] border border-[#e0dde4] bg-white px-4 py-4 shadow-[0_4px_14px_rgba(0,0,0,0.05)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_9px_20px_rgba(0,0,0,0.08)]">
-            <p className="text-[18px] font-bold uppercase leading-none text-[#0b7a73]">РАССЫЛКА</p>
-            <button
-              type="button"
-              disabled={mailingMessageId == null}
-              className="mt-5 w-full rounded-[12px] bg-[#c0eeea] py-3 text-[14px] font-semibold text-[#0b7a73] transition-colors hover:bg-[#b4e8e3] disabled:cursor-not-allowed disabled:opacity-55"
-              onClick={() => setMailingModalOpen(true)}
-            >
-              Отправить ссылку
-            </button>
-          </div>
-
+      <aside className="order-3 hidden min-h-0 w-full shrink-0 flex-col lg:flex lg:order-none lg:w-[240px] xl:w-1/5">
+        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto rounded-t-[28px] bg-[#F5F3F8] p-4 shadow-sm sm:gap-6 sm:p-5 lg:rounded-t-none lg:rounded-tl-[50px] lg:p-6">
+          {extrasInner}
         </div>
       </aside>
     </div>
@@ -825,11 +1040,9 @@ function MailingModal({
     return d;
   })();
 
-  const monthTitle = new Intl.DateTimeFormat("ru-RU", {
-    month: "long",
-  })
-    .format(calendarMonth)
-    .toUpperCase();
+  const monthTitle = sentenceCaseRu(
+    new Intl.DateTimeFormat("ru-RU", { month: "long" }).format(calendarMonth)
+  );
 
   const currentMonthYear = new Intl.DateTimeFormat("ru-RU", {
     year: "numeric",
@@ -883,7 +1096,7 @@ function MailingModal({
   return (
     <div className="fixed inset-0 z-[120] overflow-y-auto overflow-x-hidden bg-black/25 px-2 py-4 backdrop-blur-[2px] sm:px-4 sm:py-6">
       <div className="flex min-h-[100svh] w-full items-start justify-center sm:items-center sm:py-2">
-        <section className="relative my-auto w-full max-w-[780px] max-h-none rounded-[16px] border border-[#0E847D] bg-[#FBFBFB] px-2.5 py-3 text-[#0A7772] shadow-[0_16px_44px_rgba(0,0,0,0.12)] sm:max-h-[min(90dvh,800px)] sm:overflow-y-auto sm:rounded-[20px] sm:px-4 sm:py-4 lg:px-5 lg:py-5">
+        <section className="relative my-auto w-full max-w-[780px] max-h-none rounded-[16px] border border-[#0E847D] bg-[#FBFBFB] px-2.5 py-3 font-sans text-[#0A7772] shadow-sm sm:max-h-[min(90dvh,800px)] sm:overflow-y-auto sm:rounded-[20px] sm:px-4 sm:py-4 lg:px-5 lg:py-5">
         <div className="mb-1.5 flex justify-end sm:mb-2">
           <button
             type="button"
@@ -898,7 +1111,7 @@ function MailingModal({
         <div className="mx-auto flex w-full max-w-[min(100%,560px)] flex-col gap-3 sm:max-w-[620px] sm:gap-4">
           <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,280px)_1fr] lg:items-start lg:gap-6">
             <div className="flex w-full min-w-0 flex-col items-stretch gap-3 sm:items-center sm:gap-3.5 lg:items-stretch">
-              <section className="w-full rounded-[10px] border border-[#c8d5d4] bg-[#F7F7FB] px-2.5 pb-4 pt-2.5 shadow-[0_4px_12px_rgba(0,0,0,0.07)] sm:px-4 sm:pb-5 sm:pt-3 lg:max-w-none">
+              <section className="w-full rounded-[10px] border border-[#c8d5d4] bg-[#F7F7FB] px-2.5 pb-4 pt-2.5 shadow-sm sm:px-4 sm:pb-5 sm:pt-3 lg:max-w-none">
                 <header className="mb-1.5 flex items-center justify-center gap-0.5 sm:mb-2 sm:gap-2">
                   <button
                     type="button"
@@ -912,8 +1125,8 @@ function MailingModal({
                   >
                     <span className="text-[22px] font-light leading-none sm:text-[28px]">‹</span>
                   </button>
-                  <h2 className="min-w-0 flex-1 px-0.5 text-center text-[18px] font-normal uppercase leading-tight tracking-[0.02em] text-[#0A7772] sm:text-[22px] sm:leading-none lg:text-[26px]">
-                    <span className="lowercase">{monthTitle}</span>
+                  <h2 className="min-w-0 flex-1 px-0.5 text-center font-heading text-[18px] font-normal leading-tight tracking-[0.02em] text-[#0A7772] sm:text-[22px] sm:leading-none lg:text-[26px]">
+                    {monthTitle}
                   </h2>
                   <button
                     type="button"
@@ -928,14 +1141,16 @@ function MailingModal({
                     <span className="text-[22px] font-light leading-none sm:text-[28px]">›</span>
                   </button>
                 </header>
-                <p className="mb-1.5 text-center text-[10px] text-[#0A948D]/90 sm:mb-2 sm:text-[11px]">{currentMonthYear}</p>
+                <p className="mb-1.5 text-center font-sans text-[10px] text-[#0A948D]/90 sm:mb-2 sm:text-[11px]">
+                  {currentMonthYear}
+                </p>
                 <div className="mx-auto mb-1.5 h-px w-[88%] bg-[#0FB7B0] sm:mb-2" />
 
                 <div className="grid grid-cols-7 gap-x-0 gap-y-1 px-0 pb-0 pt-0 text-center sm:gap-x-1.5 sm:gap-y-2 sm:px-0.5 sm:pb-0.5 sm:pt-0.5">
                   {dayLetters.map((day, index) => (
                     <div
                       key={`${day}-${index}`}
-                      className="py-0 text-[10px] font-normal lowercase leading-[1.2] text-[#0A7772] sm:py-0.5 sm:text-[12px]"
+                      className="py-0 font-sans text-[10px] font-normal lowercase leading-[1.2] text-[#0A7772] sm:py-0.5 sm:text-[12px]"
                     >
                       {day}
                     </div>
@@ -964,12 +1179,17 @@ function MailingModal({
                 </div>
               </section>
 
-              <div className="w-full rounded-[12px] border border-[#c5e8e4] bg-[#F1F1F5] px-2.5 py-2.5 shadow-[0_6px_16px_rgba(0,0,0,0.07)] sm:rounded-[14px] sm:px-4 sm:py-3.5 lg:max-w-none">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#55525A] sm:text-[11px]">Дата отправки</p>
-                <p className="mt-1.5 text-balance text-[14px] font-medium leading-snug text-[#0A7772] sm:mt-2 sm:text-[15px]">
+              <div className="w-full rounded-[12px] border border-[#c5e8e4] bg-[#F1F1F5] px-2.5 py-2.5 shadow-sm sm:rounded-[14px] sm:px-4 sm:py-3.5 lg:max-w-none">
+                <p className="font-sans text-[11px] font-semibold tracking-normal text-[#5f6168] sm:text-[12px]">
+                  Дата отправки
+                </p>
+                <p className="mt-1.5 text-balance font-sans text-[14px] font-medium leading-snug text-[#0A7772] sm:mt-2 sm:text-[15px]">
                   {selectedDateLine}
                 </p>
-                <label htmlFor="mailing-time" className="mt-3 block text-[10px] font-semibold uppercase tracking-[0.1em] text-[#55525A] sm:mt-3.5 sm:text-[11px]">
+                <label
+                  htmlFor="mailing-time"
+                  className="mt-3 block font-sans text-[11px] font-semibold tracking-normal text-[#5f6168] sm:mt-3.5 sm:text-[12px]"
+                >
                   Время
                 </label>
                 <input
@@ -984,10 +1204,13 @@ function MailingModal({
 
             <div className="flex min-w-0 flex-col gap-4 lg:pt-0.5">
               <div>
-                <label htmlFor="mailing-email" className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.1em] text-[#55525A] sm:mb-2 sm:text-[11px]">
+                <label
+                  htmlFor="mailing-email"
+                  className="mb-1.5 block font-sans text-[11px] font-semibold tracking-normal text-[#5f6168] sm:mb-2 sm:text-[12px]"
+                >
                   Почта получателей
                 </label>
-                <div className="flex h-[32px] items-center rounded-full border-2 border-[#17C7BE] bg-[#FBFBFB] pl-3 pr-1 shadow-sm sm:h-[34px]">
+                <div className="flex h-[32px]  items-center rounded-[8px] border-2 border-[#17C7BE] bg-[#FBFBFB] pl-3 pr-1 shadow-sm sm:h-[34px]">
                   <input
                     id="mailing-email"
                     type="email"
@@ -1004,18 +1227,20 @@ function MailingModal({
                     className="w-full min-w-0 bg-transparent text-[14px] font-normal text-[#0A7772] placeholder:text-[#BCBAC4] focus:outline-none sm:text-[15px]"
                   />
                   <button
-                    type="button"
-                    onClick={commitEmails}
-                    aria-label="Добавить почту"
-                    className="ml-1.5 flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-[6px] bg-[#056F69] text-white transition hover:brightness-110 sm:h-[28px] sm:w-[28px]"
-                  >
-                    <Check className="h-3 w-3" strokeWidth={2.5} />
-                  </button>
+  type="button"
+  onClick={commitEmails}
+  aria-label="Добавить почту"
+  className="ml-1.5 flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-[7px] bg-[#0b7a73] text-white shadow-sm transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-[#09665f] sm:h-[28px] sm:w-[28px]"
+>
+  <Check className="h-3 w-3" size={12} color="white" strokeWidth={2.5} />
+</button>
                 </div>
               </div>
 
               <section>
-                <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.1em] text-[#55525A] sm:mb-2 sm:text-[11px]">Добавленные почты</label>
+                <label className="mb-1.5 block font-sans text-[11px] font-semibold tracking-normal text-[#5f6168] sm:mb-2 sm:text-[12px]">
+                  Добавленные почты
+                </label>
                 <div className="flex max-h-[132px] flex-col gap-1.5 overflow-y-auto pr-0.5 sm:max-h-[144px]">
                   {emails.length === 0 ? (
                     <p className="rounded-[10px] border border-dashed border-[#c8d5d4] bg-white/80 px-2.5 py-2.5 text-center text-[12px] text-[#8C8991] sm:px-3 sm:py-2.5 sm:text-[13px]">
@@ -1044,11 +1269,14 @@ function MailingModal({
 
               <section>
                 <div className="mb-1.5 flex items-baseline justify-between gap-2 sm:mb-2">
-                  <label htmlFor="mailing-comment" className="text-[14px] font-semibold leading-none text-[#1E1A1E] sm:text-[15px]">
+                  <label
+                    htmlFor="mailing-comment"
+                    className="font-heading text-[13px] font-bold leading-none text-[#2f3138] sm:text-[14px]"
+                  >
                     Комментарий
                   </label>
                   <span
-                    className={`shrink-0 text-[11px] tabular-nums sm:text-[12px] ${
+                    className={`shrink-0 font-sans text-[11px] tabular-nums sm:text-[12px] ${
                       comment.length >= MAILING_COMMENT_MAX_LENGTH
                         ? "font-medium text-[#a02828]"
                         : comment.length > MAILING_COMMENT_MAX_LENGTH * 0.9
@@ -1075,7 +1303,7 @@ function MailingModal({
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5 border-t border-[#d9d6de]/80 pt-2.5 sm:gap-2 sm:pt-3">
-            <span className="w-full text-[10px] font-semibold uppercase tracking-[0.08em] text-[#55525A] sm:w-auto sm:pr-1.5 sm:text-[11px]">
+            <span className="w-full font-heading text-[12px] font-bold tracking-normal text-[#2f3138] sm:w-auto sm:pr-1.5 sm:text-[13px]">
               Повтор
             </span>
             {(["none", "day", "week", "month"] as MailingRepeat[]).map((opt) => (
@@ -1083,10 +1311,10 @@ function MailingModal({
                 key={opt}
                 type="button"
                 onClick={() => setRepeat(opt)}
-                className={`rounded-full border px-2.5 py-1 text-[11px] font-normal transition sm:px-3 sm:py-1.5 sm:text-[12px] ${
+                className={`rounded-full border px-2.5 py-1 font-sans text-[11px] font-medium transition sm:px-3 sm:py-1.5 sm:text-[12px] ${
                   repeat === opt
-                    ? "border-[#056F69] bg-[#DDEAEA] text-[#056F69]"
-                    : "border-[#C3D4D3] bg-white text-[#55525A] hover:bg-[#f4fbfb]"
+                    ? "border-[#0b7a73] bg-[#e1f6f3] text-[#0b7a73]"
+                    : "border-[#C3D4D3] bg-white text-[#5f6168] hover:bg-[#f4fbfb]"
                 }`}
               >
                 {repeatLabel(opt)}
@@ -1096,10 +1324,10 @@ function MailingModal({
 
           {formError || successText ? (
             <p
-              className={`rounded-[10px] border px-3 py-2 text-[13px] leading-relaxed sm:px-3.5 sm:py-2.5 sm:text-[14px] ${
+              className={`rounded-[10px] border px-3 py-2 font-sans text-[13px] leading-relaxed sm:px-3.5 sm:py-2.5 sm:text-[14px] ${
                 formError
                   ? "border-[#e8b4b4] bg-[#fff5f5] text-[#8a2c2c]"
-                  : "border-[#b8e0dc] bg-[#eef9f7] text-[#056F69]"
+                  : "border-[#b8e0dc] bg-[#eef9f7] text-[#0b7a73]"
               }`}
             >
               {formError ?? successText}
@@ -1111,7 +1339,7 @@ function MailingModal({
               type="button"
               onClick={() => void submit()}
               disabled={submitting || messageId == null}
-              className="flex h-[40px] w-full items-center justify-center rounded-[10px] bg-[#056F69] text-center text-[15px] font-normal text-white shadow-[0_6px_14px_rgba(0,0,0,0.16)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-55 sm:h-[44px] sm:rounded-[12px] sm:text-[16px]"
+              className="flex py-2 w-full items-center justify-center gap-2 rounded-[7px] bg-[#0b7a73] px-4 text-center font-heading text-[15px] font-semibold text-white shadow-sm transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-[#09665f] hover:shadow-sm disabled:pointer-events-none disabled:opacity-55 sm:h-[46px] sm:text-[16px]"
             >
               {submitting ? "Отправляю..." : "Отправить"}
             </button>
@@ -1184,9 +1412,9 @@ function ChatGroup({
   return (
     <div className="w-full">
       <div
-        className={`relative flex h-[54px] w-full items-stretch overflow-hidden rounded-[12px] ${
+        className={`relative flex h-[54px] w-full items-stretch overflow-hidden rounded-[12px] shadow-sm ${
           active ? "bg-[#dceef2]" : "bg-[#eceaf2]"
-        } transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_6px_14px_rgba(0,0,0,0.08)]`}
+        } transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-sm`}
       >
         <span
           className={`pointer-events-none absolute left-0 top-0 h-full w-[4px] rounded-l-[12px] ${
@@ -1334,6 +1562,17 @@ function ChatGroup({
   );
 }
 
+function SqlCodeSkeleton() {
+  return (
+    <div className="t2s-enter t2s-skeleton-stagger space-y-2 pt-1" aria-hidden>
+      <div className="h-2.5 w-[88%] rounded-full bg-[#d0ccc9]" />
+      <div className="h-2.5 w-[62%] rounded-full bg-[#d0ccc9]" />
+      <div className="h-2.5 w-full rounded-full bg-[#d0ccc9]" />
+      <div className="h-2.5 w-[72%] rounded-full bg-[#d0ccc9]" />
+    </div>
+  );
+}
+
 const LOADING_PHRASES = [
   "Анализирую базу данных…",
   "Формирую SQL-запрос…",
@@ -1351,23 +1590,21 @@ function LoadingAnswerBlock({
   hasData: boolean;
 }) {
   return (
-    <article className="rounded-[10px] border border-[#e5e2e8] bg-white px-5 py-4 shadow-[0_4px_16px_rgba(0,0,0,0.10)]">
+    <article className="rounded-[10px] border border-[#e5e2e8] bg-white px-5 py-4 shadow-sm">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="font-[var(--font-futuraround)] text-[12px] font-bold uppercase tracking-[0.06em] text-[#0b7a73]">
-          ОТВЕТ
-        </h2>
+        <h2 className="font-sans text-[12px] font-bold tracking-normal text-[#0b7a73]">Ответ</h2>
         <Sparkles className="h-6 w-6 shrink-0 animate-pulse text-[#0b7a73]" strokeWidth={1.5} />
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        {hasSql ? <DonePill label="SQL создан" /> : <GhostPill label="SQL создан" />}
+        {hasSql ? <DonePill label="Создан SQL" /> : <GhostPill label="Создан SQL" />}
         {hasData ? <DonePill label="Таблица готова" /> : <GhostPill label="Таблица готова" />}
         {hasData ? <DonePill label="График готов" /> : <GhostPill label="График готов" />}
       </div>
 
       <div className="mt-8 flex flex-col items-center gap-5 py-4">
         <div className="h-10 w-10 rounded-full border-2 border-[#d9d5dd] border-t-[#0b7a73] motion-safe:animate-spin" />
-        <p key={phraseIndex} className="text-center text-[15px] leading-7 text-[#4b4d55]">
+        <p key={phraseIndex} className="t2s-phrase-in text-center text-[15px] leading-7 text-[#4b4d55]">
           {LOADING_PHRASES[phraseIndex % LOADING_PHRASES.length]}
         </p>
       </div>
@@ -1377,18 +1614,17 @@ function LoadingAnswerBlock({
 
 function PanelSkeleton({ title, tall }: { title: string; tall?: boolean }) {
   return (
-    <article className="overflow-hidden rounded-[10px] border border-[#e5e2e8] bg-white shadow-[0_4px_16px_rgba(0,0,0,0.10)]">
+    <article className="overflow-hidden rounded-[10px] border border-[#e5e2e8] bg-white shadow-sm">
       <header className="flex items-center justify-between bg-[#f8f6fa] px-5 py-4">
-        <h3 className="font-[var(--font-futuraround)] text-[13px] font-bold text-[#2f3138]">{title}</h3>
-        <div className="flex gap-3 text-[#666873]">
-          <Download className="h-4.5 w-4.5" strokeWidth={1.6} />
-          <Share2 className="h-4.5 w-4.5" strokeWidth={1.6} />
-        </div>
+        <h3 className="font-heading text-[13px] font-bold text-[#2f3138]">{title}</h3>
+        <div className="h-4.5 w-4.5 shrink-0 rounded-full bg-[#e0dde4] motion-safe:animate-pulse" aria-hidden />
       </header>
-      <div className={`space-y-2 px-5 py-5 ${tall ? "min-h-[180px]" : "min-h-[120px]"}`}>
-        <div className="h-3 w-full rounded-lg bg-[#ece8ee] motion-safe:animate-pulse" />
-        <div className="h-3 w-[92%] rounded-lg bg-[#ece8ee] motion-safe:animate-pulse" />
-        <div className="h-3 w-[78%] rounded-lg bg-[#ece8ee] motion-safe:animate-pulse" />
+      <div
+        className={`t2s-skeleton-stagger space-y-2 px-5 py-5 ${tall ? "min-h-[180px]" : "min-h-[120px]"}`}
+      >
+        <div className="h-3 w-full rounded-lg bg-[#ece8ee]" />
+        <div className="h-3 w-[92%] rounded-lg bg-[#ece8ee]" />
+        <div className="h-3 w-[78%] rounded-lg bg-[#ece8ee]" />
       </div>
     </article>
   );

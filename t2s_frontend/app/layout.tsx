@@ -1,10 +1,17 @@
 import type { Metadata } from "next";
-import localFont from "next/font/local";
+import { Geologica, Montserrat } from "next/font/google";
 import "./globals.css";
 
-const futuraRound = localFont({
-  src: "../public/afuturaround.ttf",
-  variable: "--font-futuraround",
+const geologica = Geologica({
+  subsets: ["latin", "cyrillic"],
+  variable: "--font-geologica",
+  display: "swap",
+});
+
+const montserrat = Montserrat({
+  subsets: ["latin", "cyrillic"],
+  variable: "--font-montserrat",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -18,8 +25,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ru" className={`${futuraRound.variable} h-full antialiased`} suppressHydrationWarning>
-      <body className="flex min-h-full flex-col" suppressHydrationWarning>
+    <html
+      lang="ru"
+      className={`${geologica.variable} ${montserrat.variable} h-full antialiased`}
+      suppressHydrationWarning
+    >
+      <body className="flex min-h-full flex-col font-sans" suppressHydrationWarning>
         {children}
       </body>
     </html>

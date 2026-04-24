@@ -78,7 +78,7 @@ export default function Home() {
         <button
           type="button"
           onClick={handleGoWorkspace}
-          className="group inline-flex items-center justify-center gap-2 py-2 font-[var(--font-futuraround)] text-[14px] font-semibold text-[#0b7a73] transition-colors hover:text-[#09665f] sm:mt-2 sm:px-3 sm:py-2.5"
+          className="group inline-flex items-center justify-center gap-2 py-2 text-[14px] font-semibold text-[#0b7a73] transition-colors hover:text-[#09665f] sm:mt-2 sm:px-3 sm:py-2.5"
         >
           Перейти в рабочую область
           <ArrowRight
@@ -89,10 +89,10 @@ export default function Home() {
         </button>
         </div>
         <section className="mx-auto mt-16 flex w-full flex-col items-center text-center sm:mt-20 md:mt-28">
-          <h1 className="font-[var(--font-futuraround)] text-[clamp(32px,8vw,60px)] font-bold leading-[1.14] tracking-[-0.01em] text-[#232530]">
+          <h1 className="font-heading text-[clamp(32px,8vw,60px)] font-bold leading-[1.14] tracking-[-0.01em] text-[#232530]">
             Сервис преобразования текста в sql
           </h1>
-          <h2 className="mt-2 font-[var(--font-futuraround)] text-[clamp(32px,8vw,60px)] font-bold leading-[1.14] tracking-[-0.01em] text-[#006B62]">
+          <h2 className="mt-2 font-heading text-[clamp(32px,8vw,60px)] font-bold leading-[1.14] tracking-[-0.01em] text-[#006B62]">
             Найдет по простому описанию
           </h2>
 
@@ -100,12 +100,12 @@ export default function Home() {
           
 
           <div className="mt-10 flex w-full flex-wrap items-center justify-center gap-3 text-left sm:mt-12">
-            <span className="text-[14px] text-[#8C8C8C]">Попробуй спросить:</span>
+            <span className="font-sans text-[14px] text-[#8C8C8C]">Попробуй спросить:</span>
             {questionsLoading
               ? Array.from({ length: 3 }).map((_, idx) => (
                   <div
                     key={`question-skeleton-${idx}`}
-                    className="h-[36px] w-[min(100%,340px)] animate-pulse rounded-lg bg-white/80 shadow-[0_1px_3px_rgba(0,0,0,0.08)]"
+                    className="h-[36px] w-[min(100%,340px)] animate-pulse rounded-lg bg-white/80 shadow-sm"
                   />
                 ))
               : questions.map(({ text, icon: Icon }) => (
@@ -113,7 +113,7 @@ export default function Home() {
                     key={text}
                     type="button"
                     onClick={() => handleSuggestionClick(text)}
-                    className="flex max-w-full items-center gap-1 rounded-lg bg-white px-4 py-2 text-[13px] text-[#8C8C8C] shadow-[0_1px_3px_rgba(0,0,0,0.08)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:text-[#6f6f76] hover:shadow-[0_6px_14px_rgba(0,0,0,0.10)]"
+                    className="flex max-w-full items-center gap-1 rounded-lg bg-white px-4 py-2 text-[13px] text-[#8C8C8C] shadow-sm transition-all duration-200 ease-out hover:-translate-y-0.5 hover:text-[#6f6f76] hover:shadow-sm"
                   >
                     <Icon size={13} className="text-[#B3B3B3]" />
                     <span className="min-w-0 whitespace-normal break-words text-left">{text}</span>

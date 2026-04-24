@@ -72,7 +72,7 @@ export function QueryInputBar({
 
   return (
     <form
-      className={`flex items-center gap-3 rounded-2xl border border-[#E4E4E4] bg-[#F4F4F4] px-4 py-3 shadow-[0_4px_20px_rgba(0,0,0,0.07)] ${className}`}
+      className={`flex items-center gap-3 rounded-2xl border border-[#E4E4E4] bg-[#F4F4F4] px-4 py-3 shadow-sm transition-[box-shadow,transform,border-color] duration-200 ease-out ${className}`}
       onSubmit={(event) => {
         event.preventDefault();
         submit();
@@ -115,7 +115,7 @@ export function QueryInputBar({
       <button
         type="submit"
         disabled={disabled}
-        className={`flex min-h-[38px] shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#80B1AC] py-2 text-[13px] font-medium text-white shadow-[0_2px_8px_rgba(90,120,115,0.35)] transition-[width,padding,opacity] duration-300 ease-out hover:brightness-95 disabled:pointer-events-none disabled:opacity-50 ${
+        className={`flex min-h-[38px] shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#006B62] py-2 text-[13px] font-medium text-white shadow-sm transition-[width,padding,opacity] duration-300 ease-out hover:bg-[#1FC5B6] disabled:pointer-events-none disabled:opacity-50 ${
           hasQuery ? "w-11 px-0" : "min-w-[112px] px-4"
         }`}
       >
