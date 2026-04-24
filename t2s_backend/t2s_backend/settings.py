@@ -12,9 +12,6 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
-
-from core.utils.db_inspector import DatabaseInspector
 
 load_dotenv()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -47,11 +44,6 @@ CSRF_TRUSTED_ORIGINS = [
     "https://owlishly-tireless-ptarmigan.cloudpub.ru",
     "https://tacitly-primary-butterfish.cloudpub.ru",
 ]
-
-engine = create_async_engine("sqlite+aiosqlite:///incity.db")
-ASYNC_SESSION = async_sessionmaker(engine, expire_on_commit=False)
-
-INSPECTOR = DatabaseInspector(engine)
 
 
 AI_API_KEY = os.getenv("AI_API_KEY")
@@ -263,6 +255,8 @@ STATIC_URL = "static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "static")
 _staticfiles_dir = os.path.join(BASE_DIR, "staticfiles")
 STATICFILES_DIRS = [_staticfiles_dir] if os.path.isdir(_staticfiles_dir) else []
+MEDIA_URL = "/media/"
+MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 
 TEXT2SQL_MAX_RETRIES = int(os.getenv("TEXT2SQL_MAX_RETRIES", "2"))
 

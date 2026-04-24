@@ -20,11 +20,19 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.models import Chat, Message, Role
-from core.serializers import ChatSerializer, MessageDetailResponseSerializer, MessagePreviewSerializer
+from core.models import Chat, DatabaseConnection, Role, Message
+from core.serializers import (
+    ChatSerializer,
+    DatabaseConnectionResponseSerializer,
+    DatabaseConnectionSerializer,
+    MessageDetailResponseSerializer,
+    MessagePreviewSerializer,
+)
+from core.utils.db_connection import build_async_database_url, check_connection, set_active_connection_payload
 from core.utils.fetch_data import fetch_data
 
 PDF_FONT_NAME = "DejaVuSans"
@@ -64,6 +72,68 @@ class ChatViewSet(viewsets.ModelViewSet):
 
         serializer = MessagePreviewSerializer(messages, many=True)
         return Response(serializer.data)
+
+
+class DatabaseConnectionView(APIView):
+    permission_classes = [permissions.AllowAny]
+    parser_classes = [MultiPartParser, JSONParser]
+
+    @extend_schema(
+        summary="Подключить внешнюю БД",
+        description=(
+            "Создает и активирует подключение к PostgreSQL/MySQL/SQLite. "
+            "Для SQLite передается файл базы данных"
+        ),
+        request=DatabaseConnectionSerializer,
+        responses={201: DatabaseConnectionResponseSerializer},
+        tags=["Подключения к БД"],
+    )
+    def post(self, request):
+        serializer = DatabaseConnectionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        instance = serializer.save(is_active=False)
+
+        sqlite_file_name = instance.sqlite_file.name if instance.sqlite_file else None
+        try:
+            db_url = build_async_database_url(
+                db_type=instance.db_type,
+                username=instance.username,
+                password=instance.password,
+                database_name=instance.database_name,
+                host=instance.host,
+                port=instance.port,
+                sqlite_file_path=instance.sqlite_file.path if instance.sqlite_file else "",
+            )
+            async_to_sync(check_connection)(db_url)
+        except Exception as exc:
+            if instance.sqlite_file:
+                instance.sqlite_file.delete(save=False)
+            instance.delete()
+            return Response(
+                {"error": f"Не удалось подключиться к базе данных: {str(exc)}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        DatabaseConnection.objects.filter(is_active=True).exclude(id=instance.id).update(is_active=False)
+        instance.is_active = True
+        instance.save(update_fields=["is_active", "updated_at"])
+        set_active_connection_payload(
+            {
+                "db_type": instance.db_type,
+                "username": instance.username,
+                "password": instance.password,
+                "database_name": instance.database_name,
+                "host": instance.host,
+                "port": instance.port,
+                "sqlite_file_path": instance.sqlite_file.path if instance.sqlite_file else "",
+            }
+        )
+
+        response_data = DatabaseConnectionResponseSerializer(instance).data
+        if sqlite_file_name:
+            response_data["sqlite_file"] = sqlite_file_name
+
+        return Response(response_data, status=status.HTTP_201_CREATED)
 
 
 class MessageDetailView(APIView):

@@ -1,9 +1,9 @@
-from django.db import models
+﻿from django.db import models
 
 
 class Role(models.TextChoices):
-    USER = 'user', 'Пользователь'
-    LLM = 'llm', 'Бот'
+    USER = "user", "Пользователь"
+    LLM = "llm", "Бот"
 
 
 class Chat(models.Model):
@@ -16,7 +16,69 @@ class Chat(models.Model):
     class Meta:
         verbose_name = "Чат"
         verbose_name_plural = "Чаты"
-        ordering = ['-created_at']
+        ordering = ["-created_at"]
+
+
+class DatabaseType(models.TextChoices):
+    POSTGRESQL = "postgresql", "PostgreSQL"
+    MYSQL = "mysql", "MySQL"
+    SQLITE = "sqlite", "SQLite"
+
+
+class DatabaseConnection(models.Model):
+    db_type = models.CharField(
+        max_length=32,
+        choices=DatabaseType.choices,
+        verbose_name="Тип БД",
+    )
+    username = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        verbose_name="Логин",
+    )
+    password = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        verbose_name="Пароль",
+    )
+    database_name = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        verbose_name="База данных",
+    )
+    host = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        verbose_name="Хост",
+    )
+    port = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Порт",
+    )
+    sqlite_file = models.FileField(
+        upload_to="db_files/sqlite/",
+        null=True,
+        blank=True,
+        verbose_name="Файл SQLite",
+    )
+    is_active = models.BooleanField(default=False, verbose_name="Активное подключение")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлено")
+
+    def __str__(self):
+        if self.db_type == DatabaseType.SQLITE:
+            return f"SQLite ({self.sqlite_file.name if self.sqlite_file else 'без файла'})"
+        return f"{self.get_db_type_display()} {self.host}:{self.port}/{self.database_name}"
+
+    class Meta:
+        verbose_name = "Подключение к БД"
+        verbose_name_plural = "Подключения к БД"
+        ordering = ["-updated_at"]
 
 
 class Message(models.Model):
@@ -29,13 +91,13 @@ class Message(models.Model):
         null=True,
         blank=True,
         verbose_name="Ответ на сообщение",
-        related_name="answer_message_id"
+        related_name="answer_message_id",
     )
     role = models.CharField(
         max_length=10,
         choices=Role.choices,
         default=Role.USER,
-        verbose_name="Роль"
+        verbose_name="Роль",
     )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")
 

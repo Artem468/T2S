@@ -23,7 +23,7 @@ services:
     working_dir: /app
     volumes:
       - static_volume:/app/static
-      - ./incity.db:/app/incity.db:ro
+      - media_volume:/app/media
     expose:
       - "8000"
     env_file: .env
@@ -45,7 +45,7 @@ services:
       celery -A t2s_backend worker --loglevel=INFO
     volumes:
       - static_volume:/app/static
-      - ./incity.db:/app/incity.db:ro
+      - media_volume:/app/media
     env_file: .env
     depends_on:
       t2s-django:
@@ -65,7 +65,7 @@ services:
     working_dir: /app
     volumes:
       - static_volume:/app/static
-      - ./incity.db:/app/incity.db:ro
+      - media_volume:/app/media
     env_file:
       - .env
     depends_on:
@@ -110,6 +110,7 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - static_volume:/app/static
+      - media_volume:/app/media
     depends_on:
       - t2s-django
       - t2s-frontend
@@ -120,6 +121,7 @@ services:
 volumes:
   postgres_data:
   static_volume:
+  media_volume:
   redis_data:
 
 networks:

@@ -5,17 +5,21 @@ from django.conf import settings
 from openai import OpenAI
 from openai.types.chat import ChatCompletionMessageParam
 
+from core.models import DatabaseType
+from core.utils.db_connection import get_runtime_db_type, get_runtime_inspector
 from core.utils.db_inspector import schema_to_string
 
 
 def _get_schema_ddl() -> str:
-    raw_schema = async_to_sync(settings.INSPECTOR.get_full_schema)()
+    inspector = get_runtime_inspector()
+    raw_schema = async_to_sync(inspector.get_full_schema)()
     return schema_to_string(raw_schema)
 
 
 def _build_sql_prompt(
     question: str,
     schema_ddl: str,
+    db_type: str,
     previous_error: str | None = None,
     failed_sql: str | None = None,
 ) -> str:
@@ -29,8 +33,14 @@ def _build_sql_prompt(
             "Do not reuse invalid table names, columns or aliases.\n"
         )
 
+    db_label = {
+        DatabaseType.POSTGRESQL: "PostgreSQL",
+        DatabaseType.MYSQL: "MySQL",
+        DatabaseType.SQLITE: "SQLite",
+    }.get(db_type, "SQL")
+
     return (
-        "You are a strict SQLite Text-to-SQL generator.\n"
+        f"You are a strict {db_label} Text-to-SQL generator.\n"
         "Return exactly one valid SQL SELECT query and nothing else.\n\n"
         "HARD RULES:\n"
         "1) Use ONLY tables/columns that exist in SCHEMA.\n"
@@ -91,10 +101,12 @@ def generate_sql(
     previous_error: str | None = None,
     failed_sql: str | None = None,
 ) -> str:
+    db_type = get_runtime_db_type()
     schema_ddl = _get_schema_ddl()
     prompt = _build_sql_prompt(
         question=question,
         schema_ddl=schema_ddl,
+        db_type=db_type,
         previous_error=previous_error,
         failed_sql=failed_sql,
     )
