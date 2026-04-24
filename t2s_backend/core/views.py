@@ -4,6 +4,7 @@ import uuid
 from pathlib import Path
 
 from asgiref.sync import async_to_sync
+from django.db import transaction
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from docx import Document
@@ -144,6 +145,24 @@ class DatabaseConnectionView(APIView):
         connections = DatabaseConnection.objects.all().order_by('-created_at')
         serializer = DatabaseConnectionResponseSerializer(connections, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class DatabaseActivateView(APIView):
+    @extend_schema(
+        summary="Активировать бд",
+        tags=["Подключения к БД"],
+        responses={200: OpenApiTypes.OBJECT}  # Опционально для описания ответа
+    )
+    def patch(self, request, pk):
+        connection = get_object_or_404(DatabaseConnection, pk=pk)
+
+        with transaction.atomic():
+            DatabaseConnection.objects.all().update(is_active=False)
+
+            connection.is_active = True
+            connection.save()
+
+        return Response({"status": "success", "active_id": connection.id}, status=status.HTTP_200_OK)
 
 
 class MessageDetailView(APIView):
