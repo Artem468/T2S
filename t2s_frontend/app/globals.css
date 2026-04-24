@@ -50,6 +50,16 @@ body {
   border-radius: 8px;
 }
 
+.t2s-scrollbar-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.t2s-scrollbar-hidden::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
 @keyframes t2sPhraseIn {
   from {
     opacity: 0;

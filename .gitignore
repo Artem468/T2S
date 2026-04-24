@@ -164,3 +164,4 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 .idea/
 
+t2s_backend/media/db_files/sqlite/incity.db

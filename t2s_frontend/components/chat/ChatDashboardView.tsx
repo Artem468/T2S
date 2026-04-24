@@ -235,7 +235,7 @@ export function ChatDashboardView({
         <Image src="/t2slogo.svg" alt="T2S" width={96} height={44} priority />
       </div>
     <div className="flex min-h-0 w-full flex-col bg-[#FBF8FC] text-[#26262b] lg:h-[90dvh] lg:flex-row">
-      <aside className="order-1 flex min-h-0 w-full shrink-0 flex-col lg:order-none lg:w-1/5">
+      <aside className="order-1 flex min-h-0 w-full shrink-0 flex-col lg:order-none lg:w-[240px] xl:w-1/5">
         
 
         <div className="flex min-h-0 flex-1 flex-col rounded-b-[28px] bg-[#F5F3F8] p-4 sm:p-5 lg:rounded-b-none lg:rounded-tr-[50px] lg:p-6">
@@ -296,11 +296,11 @@ export function ChatDashboardView({
         </div>
       </aside>
 
-      <section className="order-2 relative flex min-w-0 flex-1 flex-col bg-[#fbfafc] px-3 pt-4 sm:px-5 sm:pt-6 lg:order-none">
+      <section className="order-2 relative flex min-w-0 flex-1 flex-col bg-[#fbfafc] px-3 pt-4 sm:px-5 sm:pt-6 lg:order-none lg:px-4 xl:px-5">
         <div className="flex-1 overflow-y-auto pb-8 lg:pb-36">
           <div className="mx-auto max-w-[860px]">
             {phase === "idle" && !chatSwitchPending && (
-              <div className="mx-auto mt-24 flex h-[260px] max-w-[620px] flex-col items-center justify-center rounded-[18px] border border-dashed border-[#d8d5dd] bg-white/80 px-8 text-center shadow-[0_2px_14px_rgba(0,0,0,0.04)]">
+              <div className="mx-auto mt-24 flex h-[260px] max-w-[760px] flex-col items-center justify-center rounded-[18px] border border-dashed border-[#d8d5dd] bg-white/80 px-8 text-center shadow-[0_2px_14px_rgba(0,0,0,0.04)]">
                 <Sparkles className="mb-3 h-8 w-8 text-[#0b7a73]/70" strokeWidth={1.6} />
                 <p className="text-[15px] leading-7 text-[#8f8f96]">
                   Задайте вопрос в поле ниже — здесь появятся ответ, таблица и график.
@@ -309,7 +309,7 @@ export function ChatDashboardView({
             )}
 
             {phase === "loading" && (
-              <div className="mx-auto flex max-w-[600px] flex-col gap-5">
+              <div className="mx-auto flex max-w-[760px] flex-col gap-5">
                 {showBubble && (
                   <div className="ml-auto max-w-[90%] rounded-[10px] bg-[#b9efe7] px-5 py-3 text-[14px] leading-6 text-[#283136] shadow-[0_6px_18px_rgba(11,122,115,0.14)] motion-safe:animate-pulse">
                     {userBubble}
@@ -327,7 +327,7 @@ export function ChatDashboardView({
             )}
 
             {chatSwitchPending && phase !== "loading" && (
-              <div className="mx-auto flex max-w-[600px] flex-col gap-5">
+              <div className="mx-auto flex max-w-[760px] flex-col gap-5">
                 <article className="rounded-[10px] border border-[#e5e2e8] bg-white px-4 py-4 shadow-[0_4px_16px_rgba(0,0,0,0.10)] sm:px-5">
                   <div className="flex items-center justify-between gap-3">
                     <h2 className="font-[var(--font-futuraround)] text-[12px] font-bold uppercase tracking-[0.06em] text-[#0b7a73]">
@@ -346,7 +346,7 @@ export function ChatDashboardView({
             )}
 
             {phase === "ready" && (
-              <div className="mx-auto flex max-w-[600px] flex-col gap-5">
+              <div className="mx-auto flex max-w-[760px] flex-col gap-5">
                 {showBubble && (
                   <div className="ml-auto max-w-[90%] rounded-[10px] bg-[#b9efe7] px-5 py-3 text-[14px] leading-6 text-[#283136] shadow-[0_6px_18px_rgba(11,122,115,0.14)] transition-transform duration-200 ease-out hover:-translate-y-0.5">
                     {userBubble}
@@ -562,7 +562,7 @@ export function ChatDashboardView({
         </div>
       </section>
 
-      <aside className="order-3 flex min-h-0 w-full shrink-0 flex-col lg:order-none lg:w-1/5">
+      <aside className="order-3 flex min-h-0 w-full shrink-0 flex-col lg:order-none lg:w-[240px] xl:w-1/5">
         <div className="flex min-h-0 flex-1 flex-col gap-5 rounded-t-[28px] bg-[#F5F3F8] p-4 sm:gap-6 sm:p-5 lg:rounded-t-none lg:rounded-tl-[50px] lg:p-6">
           <h2 className="font-[var(--font-futuraround)] text-[20px] font-bold uppercase text-[#2d2e33]">
             ДОПОЛНИТЕЛЬНАЯ ИНФОРМАЦИЯ
@@ -572,50 +572,53 @@ export function ChatDashboardView({
 
           <div className="relative min-h-[160px] overflow-hidden rounded-[10px] bg-[#e8e4ea] p-4 lg:min-h-[196px]">
             {sqlText ? (
-              <>
-                <div className="max-h-[min(42vh,320px)] min-h-0 overflow-y-auto overflow-x-hidden pr-10 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden [&_*]:[scrollbar-width:none] [&_*]:[-ms-overflow-style:none] [&_*::-webkit-scrollbar]:hidden lg:max-h-[min(48vh,400px)]">
-                  <SyntaxHighlighter
-                    language="sql"
-                    style={sqlTheme}
-                    wrapLongLines
-                    customStyle={{
-                      margin: 0,
-                      padding: 0,
-                      background: "transparent",
-                    }}
-                    codeTagProps={{
-                      style: {
-                        fontSize: "11px",
-                        lineHeight: "1.7",
-                      },
-                    }}
-                  >
-                    {sqlText}
-                  </SyntaxHighlighter>
-                </div>
-                <button
-                  type="button"
-                  className="absolute bottom-3 right-3 rounded-[10px] bg-[#d0ccc9] p-2 text-[#7a7d84]"
-                  aria-label="Копировать SQL"
-                  onClick={() => void handleCopySql()}
-                >
-                  <Copy className="h-4 w-4" strokeWidth={1.8} />
-                </button>
-                {copyToast && (
-                  <div className="pointer-events-none absolute bottom-14 right-3 rounded-md bg-[#0b7a73] px-2.5 py-1 text-[11px] font-medium text-white shadow-[0_8px_18px_rgba(11,122,115,0.35)]">
-                    {copyToast}
+                <>
+                  <div className="max-h-[min(42vh,320px)] min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain pr-12 pb-12 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:max-h-[min(48vh,400px)]">
+                    <SyntaxHighlighter
+                        language="sql"
+                        style={sqlTheme}
+                        wrapLongLines
+                        customStyle={{
+                          margin: 0,
+                          padding: 0,
+                          background: "transparent",
+                          overflow: "visible",
+                        }}
+                        codeTagProps={{
+                          style: {
+                            fontSize: "11px",
+                            lineHeight: "1.7",
+                          },
+                        }}
+                    >
+                      {sqlText}
+                    </SyntaxHighlighter>
                   </div>
-                )}
-              </>
+
+                  <button
+                      type="button"
+                      className="absolute bottom-3 right-3 rounded-[10px] bg-[#d0ccc9] p-2 text-[#7a7d84]"
+                      aria-label="Копировать SQL"
+                      onClick={() => void handleCopySql()}
+                  >
+                    <Copy className="h-4 w-4" strokeWidth={1.8} />
+                  </button>
+
+                  {copyToast && (
+                      <div className="pointer-events-none absolute bottom-14 right-3 rounded-md bg-[#0b7a73] px-2.5 py-1 text-[11px] font-medium text-white shadow-[0_8px_18px_rgba(11,122,115,0.35)]">
+                        {copyToast}
+                      </div>
+                  )}
+                </>
             ) : phase === "loading" ? (
-              <div className="space-y-2 pt-1">
-                <div className="h-2.5 w-[88%] rounded-full bg-[#d9d5dd] motion-safe:animate-pulse" />
-                <div className="h-2.5 w-[62%] rounded-full bg-[#d9d5dd] motion-safe:animate-pulse" />
-                <div className="h-2.5 w-full rounded-full bg-[#d9d5dd] motion-safe:animate-pulse" />
-                <div className="h-2.5 w-[72%] rounded-full bg-[#d9d5dd] motion-safe:animate-pulse" />
-              </div>
+                <div className="space-y-2 pt-1">
+                  <div className="h-2.5 w-[88%] rounded-full bg-[#d9d5dd] motion-safe:animate-pulse" />
+                  <div className="h-2.5 w-[62%] rounded-full bg-[#d9d5dd] motion-safe:animate-pulse" />
+                  <div className="h-2.5 w-full rounded-full bg-[#d9d5dd] motion-safe:animate-pulse" />
+                  <div className="h-2.5 w-[72%] rounded-full bg-[#d9d5dd] motion-safe:animate-pulse" />
+                </div>
             ) : (
-              <p className="pt-2 text-[13px] leading-6 text-[#8d8d93]">Здесь появится сгенерированный SQL.</p>
+                <p className="pt-2 text-[13px] leading-6 text-[#8d8d93]">Здесь появится сгенерированный SQL.</p>
             )}
           </div>
 
