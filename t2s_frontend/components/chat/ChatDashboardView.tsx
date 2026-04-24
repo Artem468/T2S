@@ -98,46 +98,6 @@ const sqlTheme = {
   },
 };
 
-function ClientSqlHighlighter({ code }: { code: string }) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-  if (!mounted) {
-    return (
-      <pre
-        className="m-0 max-w-full whitespace-pre-wrap break-words bg-transparent p-0 text-[11px] leading-[1.7] text-[#6a7080]"
-        style={{
-          fontFamily:
-            'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-        }}
-      >
-        {code}
-      </pre>
-    );
-  }
-  return (
-    <SyntaxHighlighter
-      language="sql"
-      style={sqlTheme}
-      wrapLongLines
-      customStyle={{
-        margin: 0,
-        padding: 0,
-        background: "transparent",
-      }}
-      codeTagProps={{
-        style: {
-          fontSize: "11px",
-          lineHeight: "1.7",
-        },
-      }}
-    >
-      {code}
-    </SyntaxHighlighter>
-  );
-}
-
 function formatCell(value: unknown): string {
   if (value === null || value === undefined) return "—";
   if (typeof value === "number") return Number.isInteger(value) ? String(value) : String(Math.round(value * 1000) / 1000);
@@ -217,7 +177,7 @@ export function ChatDashboardView({
   return (
     <>
       <div className="flex h-[72px] items-center px-4 sm:px-5 lg:h-[10dvh]">
-        <Image src="/t2slogo.svg" alt="T2S" width={96} height={44} priority unoptimized />
+        <Image src="/t2slogo.svg" alt="T2S" width={96} height={44} priority />
       </div>
     <div className="flex min-h-0 w-full flex-col bg-[#FBF8FC] text-[#26262b] lg:h-[90dvh] lg:flex-row">
       <aside className="order-1 flex min-h-0 w-full shrink-0 flex-col lg:order-none lg:w-1/5">
@@ -355,10 +315,10 @@ export function ChatDashboardView({
                         <h3 className="font-[var(--font-futuraround)] text-[13px] font-bold text-[#2f3138]">Таблица</h3>
                         <div className="flex gap-3 text-[#666873]">
                           <button type="button" className="rounded-full p-1.5 hover:bg-black/5" aria-label="Скачать">
-                            <Download className="h-[18px] w-[18px]" strokeWidth={1.6} />
+                            <Download className="h-4.5 w-4.5" strokeWidth={1.6} />
                           </button>
                           <button type="button" className="rounded-full p-1.5 hover:bg-black/5" aria-label="Поделиться">
-                            <Share2 className="h-[18px] w-[18px]" strokeWidth={1.6} />
+                            <Share2 className="h-4.5 w-4.5" strokeWidth={1.6} />
                           </button>
                         </div>
                       </header>
@@ -403,10 +363,10 @@ export function ChatDashboardView({
                         <h3 className="font-[var(--font-futuraround)] text-[13px] font-bold text-[#2f3138]">График</h3>
                         <div className="flex gap-3 text-[#666873]">
                           <button type="button" className="rounded-full p-1.5 hover:bg-black/5" aria-label="Скачать">
-                            <Download className="h-[18px] w-[18px]" strokeWidth={1.6} />
+                            <Download className="h-4.5 w-4.5" strokeWidth={1.6} />
                           </button>
                           <button type="button" className="rounded-full p-1.5 hover:bg-black/5" aria-label="Поделиться">
-                            <Share2 className="h-[18px] w-[18px]" strokeWidth={1.6} />
+                            <Share2 className="h-4.5 w-4.5" strokeWidth={1.6} />
                           </button>
                         </div>
                       </header>
@@ -499,11 +459,28 @@ export function ChatDashboardView({
 
           <p className="mt-2 text-[11px] uppercase tracking-[0.08em] text-[#8d8d93]">SQL КОД</p>
 
-          <div className="relative mt-3 min-h-[160px] rounded-[10px] bg-[#e8e4ea] p-4 lg:min-h-[196px]">
+          <div className="relative mt-3 min-h-[160px] overflow-hidden rounded-[10px] bg-[#e8e4ea] p-4 lg:min-h-[196px]">
             {sqlText ? (
               <>
-                <div className="max-h-[220px] overflow-auto pr-10 lg:max-h-[280px]">
-                  <ClientSqlHighlighter code={sqlText} />
+                <div className="max-h-[min(42vh,320px)] min-h-0 overflow-y-auto overflow-x-hidden pr-10 [scrollbar-gutter:stable] lg:max-h-[min(48vh,400px)]">
+                  <SyntaxHighlighter
+                    language="sql"
+                    style={sqlTheme}
+                    wrapLongLines
+                    customStyle={{
+                      margin: 0,
+                      padding: 0,
+                      background: "transparent",
+                    }}
+                    codeTagProps={{
+                      style: {
+                        fontSize: "11px",
+                        lineHeight: "1.7",
+                      },
+                    }}
+                  >
+                    {sqlText}
+                  </SyntaxHighlighter>
                 </div>
                 <button
                   type="button"
@@ -676,10 +653,7 @@ function MailingModal({
   useEffect(() => {
     const d = new Date(scheduledAt);
     if (Number.isNaN(d.getTime())) return;
-    const id = window.setTimeout(() => {
-      setCalendarMonth(new Date(d.getFullYear(), d.getMonth(), 1));
-    }, 0);
-    return () => window.clearTimeout(id);
+    setCalendarMonth(new Date(d.getFullYear(), d.getMonth(), 1));
   }, [scheduledAt]);
 
   const commitEmails = () => {
@@ -888,7 +862,6 @@ function MailingModal({
                   type="time"
                   value={timeValue}
                   onChange={(e) => onTimeInputChange(e.target.value)}
-                  suppressHydrationWarning
                   className="mt-1.5 w-full max-w-full cursor-pointer rounded-lg border-2 border-[#17C7BE] bg-[#FBFBFB] px-2.5 py-2 text-[15px] font-normal text-[#0A7772] shadow-sm focus:outline-none focus:ring-2 focus:ring-[#056F69]/25 sm:mt-2 sm:max-w-[220px] sm:text-[16px]"
                 />
               </div>
@@ -1293,8 +1266,8 @@ function PanelSkeleton({ title, tall }: { title: string; tall?: boolean }) {
       <header className="flex items-center justify-between bg-[#f8f6fa] px-5 py-4">
         <h3 className="font-[var(--font-futuraround)] text-[13px] font-bold text-[#2f3138]">{title}</h3>
         <div className="flex gap-3 text-[#666873]">
-          <Download className="h-[18px] w-[18px]" strokeWidth={1.6} />
-          <Share2 className="h-[18px] w-[18px]" strokeWidth={1.6} />
+          <Download className="h-4.5 w-4.5" strokeWidth={1.6} />
+          <Share2 className="h-4.5 w-4.5" strokeWidth={1.6} />
         </div>
       </header>
       <div className={`space-y-2 px-5 py-5 ${tall ? "min-h-[180px]" : "min-h-[120px]"}`}>

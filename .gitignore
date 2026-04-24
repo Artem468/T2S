@@ -16,6 +16,8 @@ downloads/
 eggs/
 .eggs/
 lib/
+!t2s_frontend/lib/
+!t2s_frontend/lib/**
 lib64/
 parts/
 sdist/

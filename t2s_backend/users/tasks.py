@@ -1,5 +1,6 @@
 from celery import shared_task
 from django.conf import settings
+from django.core.mail import get_connection
 from django.core.mail import EmailMultiAlternatives
 from django_celery_beat.models import PeriodicTask
 
@@ -18,6 +19,8 @@ def _disable_periodic_task(task_name):
     autoretry_for=(Exception,),
     retry_backoff=True,
     retry_kwargs={"max_retries": 3},
+    soft_time_limit=getattr(settings, "MAILING_TASK_SOFT_TIME_LIMIT", 180),
+    time_limit=getattr(settings, "MAILING_TASK_TIME_LIMIT", 240),
 )
 def send_scheduled_mailing(self, campaign_id):
     mailing = (
@@ -40,23 +43,26 @@ def send_scheduled_mailing(self, campaign_id):
     export_links = build_export_links(base_url, mailing.message_lookup_id)
     sent_count = 0
 
-    for recipient in active_recipients:
-        unsubscribe_url = build_unsubscribe_url(base_url, recipient.unsubscribe_token)
-        text_body, html_body = render_mailing_bodies(
-            description=mailing.message.description,
-            comment=mailing.comment,
-            export_links=export_links,
-            unsubscribe_url=unsubscribe_url,
-        )
-        email = EmailMultiAlternatives(
-            subject=getattr(settings, "MAILING_EMAIL_SUBJECT", "Рассылка T2S"),
-            body=text_body,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            to=[recipient.email],
-        )
-        email.attach_alternative(html_body, "text/html")
-        email.send(fail_silently=False)
-        sent_count += 1
+    connection = get_connection(fail_silently=False)
+    with connection:
+        for recipient in active_recipients:
+            unsubscribe_url = build_unsubscribe_url(base_url, recipient.unsubscribe_token)
+            text_body, html_body = render_mailing_bodies(
+                description=mailing.message.description,
+                comment=mailing.comment,
+                export_links=export_links,
+                unsubscribe_url=unsubscribe_url,
+            )
+            email = EmailMultiAlternatives(
+                subject=getattr(settings, "MAILING_EMAIL_SUBJECT", "Рассылка T2S"),
+                body=text_body,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=[recipient.email],
+                connection=connection,
+            )
+            email.attach_alternative(html_body, "text/html")
+            email.send(fail_silently=False)
+            sent_count += 1
 
     if mailing.repeat == MailingRepeat.NONE:
         mailing.is_active = False

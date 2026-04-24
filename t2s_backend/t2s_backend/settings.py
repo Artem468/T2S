@@ -37,6 +37,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1",
     "https://sincerely-masculine-albatross.cloudpub.ru",
     "https://owlishly-tireless-ptarmigan.cloudpub.ru",
+    "https://tacitly-primary-butterfish.cloudpub.ru",
 ]
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
@@ -44,6 +45,7 @@ CSRF_TRUSTED_ORIGINS = [
     "http://127.0.0.1",
     "https://sincerely-masculine-albatross.cloudpub.ru",
     "https://owlishly-tireless-ptarmigan.cloudpub.ru",
+    "https://tacitly-primary-butterfish.cloudpub.ru",
 ]
 
 engine = create_async_engine("sqlite+aiosqlite:///incity.db")
@@ -218,9 +220,12 @@ EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
 EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True").lower() in ("true", "1")
+EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "20"))
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER or "no-reply@t2s.local")
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "http://localhost")
 MAILING_EMAIL_SUBJECT = os.getenv("MAILING_EMAIL_SUBJECT", "Рассылка T2S")
+MAILING_TASK_SOFT_TIME_LIMIT = int(os.getenv("MAILING_TASK_SOFT_TIME_LIMIT", "180"))
+MAILING_TASK_TIME_LIMIT = int(os.getenv("MAILING_TASK_TIME_LIMIT", "240"))
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
