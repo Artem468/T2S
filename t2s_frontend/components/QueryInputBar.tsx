@@ -27,9 +27,30 @@ export function QueryInputBar({
   const hasQuery = draftValue.trim().length > 0;
   const focusInput = () => inputRef.current?.focus();
 
+  const resizeTextarea = (target: HTMLTextAreaElement) => {
+    const MIN_HEIGHT = 26;
+    const MAX_HEIGHT = 72;
+
+    if (!target.value.trim()) {
+      target.style.height = `${MIN_HEIGHT}px`;
+      target.style.overflowY = "hidden";
+      return;
+    }
+
+    target.style.height = "auto";
+    const nextHeight = Math.min(target.scrollHeight, MAX_HEIGHT);
+    target.style.height = `${Math.max(nextHeight, MIN_HEIGHT)}px`;
+    target.style.overflowY = target.scrollHeight > MAX_HEIGHT ? "auto" : "hidden";
+  };
+
   useEffect(() => {
     setDraftValue(value);
   }, [value]);
+
+  useEffect(() => {
+    if (!inputRef.current) return;
+    resizeTextarea(inputRef.current);
+  }, [draftValue]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing) return;
@@ -40,9 +61,7 @@ export function QueryInputBar({
   };
 
   const onInputResize = (event: FormEvent<HTMLTextAreaElement>) => {
-    const target = event.currentTarget;
-    target.style.height = "auto";
-    target.style.height = `${target.scrollHeight}px`;
+    resizeTextarea(event.currentTarget);
   };
 
   const submit = () => {
@@ -85,7 +104,7 @@ export function QueryInputBar({
           placeholder={placeholder}
           rows={1}
           disabled={disabled}
-          className="t2s-query-area max-h-28 min-h-[26px] w-full resize-none overflow-y-auto bg-transparent pl-1 text-[14px] leading-6 text-[#232530] outline-none placeholder:text-[#9CA3AF] disabled:opacity-50"
+          className="t2s-query-area max-h-[72px] min-h-[26px] w-full resize-none overflow-x-hidden overflow-y-auto bg-transparent pl-1 text-[14px] leading-6 text-[#232530] outline-none placeholder:text-[#9CA3AF] disabled:opacity-50"
         />
         <span
           className={`pointer-events-none absolute bottom-0 left-[1.85rem] h-[2px] w-[calc(100%-2rem)] origin-left rounded bg-[#006B62] transition-transform duration-300 ${

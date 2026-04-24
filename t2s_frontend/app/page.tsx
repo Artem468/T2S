@@ -3,8 +3,9 @@
 import Image from "next/image";
 import { Briefcase, GraduationCap,ArrowRight, Users, type LucideIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { QueryInputBar } from "@/components/QueryInputBar";
+import { fetchChatQuestions } from "@/lib/api";
 
 const EXAMPLES: { text: string; icon: LucideIcon }[] = [
   { text: "Сколько людей имеет высшее образование?", icon: GraduationCap },
@@ -15,6 +16,8 @@ const EXAMPLES: { text: string; icon: LucideIcon }[] = [
 export default function Home() {
   const router = useRouter();
   const [query, setQuery] = useState("");
+  const [questions, setQuestions] = useState<{ text: string; icon: LucideIcon }[]>([]);
+  const [questionsLoading, setQuestionsLoading] = useState(true);
 
   const submitQuery = (nextValue?: string) => {
     const text = (nextValue ?? query).trim();
@@ -24,14 +27,46 @@ export default function Home() {
   };
 
   const handleSuggestionClick = (text: string) => {
-    if (query.trim().length === 0) {
-      setQuery(text);
-    }
+    setQuery(text);
   };
 
   const handleGoWorkspace = () => {
     router.push("/chat");
   };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadQuestions = async () => {
+      try {
+        const response = await fetchChatQuestions();
+        if (cancelled) return;
+        if (!response.length) {
+          setQuestions(EXAMPLES);
+          return;
+        }
+
+        const mapped = response.map((item, index) => ({
+          text: item.text,
+          icon: EXAMPLES[index % EXAMPLES.length].icon,
+        }));
+        setQuestions(mapped);
+      } catch {
+        if (!cancelled) {
+          setQuestions(EXAMPLES);
+        }
+      } finally {
+        if (!cancelled) {
+          setQuestionsLoading(false);
+        }
+      }
+    };
+
+    void loadQuestions();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <main className="min-h-screen bg-[#FBF8FC] px-4 pb-16 pt-5 sm:px-5 md:px-10 md:pb-20 md:pt-6">
@@ -66,17 +101,24 @@ export default function Home() {
 
           <div className="mt-10 flex w-full flex-wrap items-center justify-center gap-3 text-left sm:mt-12">
             <span className="text-[14px] text-[#8C8C8C]">Попробуй спросить:</span>
-            {EXAMPLES.map(({ text, icon: Icon }) => (
-              <button
-                key={text}
-                type="button"
-                onClick={() => handleSuggestionClick(text)}
-                className="flex max-w-full items-center gap-1 rounded-lg bg-white px-4 py-2 text-[13px] text-[#8C8C8C] shadow-[0_1px_3px_rgba(0,0,0,0.08)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:text-[#6f6f76] hover:shadow-[0_6px_14px_rgba(0,0,0,0.10)]"
-              >
-                <Icon size={13} className="text-[#B3B3B3]" />
-                <span className="min-w-0 whitespace-normal break-words text-left">{text}</span>
-              </button>
-            ))}
+            {questionsLoading
+              ? Array.from({ length: 3 }).map((_, idx) => (
+                  <div
+                    key={`question-skeleton-${idx}`}
+                    className="h-[36px] w-[min(100%,340px)] animate-pulse rounded-lg bg-white/80 shadow-[0_1px_3px_rgba(0,0,0,0.08)]"
+                  />
+                ))
+              : questions.map(({ text, icon: Icon }) => (
+                  <button
+                    key={text}
+                    type="button"
+                    onClick={() => handleSuggestionClick(text)}
+                    className="flex max-w-full items-center gap-1 rounded-lg bg-white px-4 py-2 text-[13px] text-[#8C8C8C] shadow-[0_1px_3px_rgba(0,0,0,0.08)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:text-[#6f6f76] hover:shadow-[0_6px_14px_rgba(0,0,0,0.10)]"
+                  >
+                    <Icon size={13} className="text-[#B3B3B3]" />
+                    <span className="min-w-0 whitespace-normal break-words text-left">{text}</span>
+                  </button>
+                ))}
           </div>
         </section>
       </div>

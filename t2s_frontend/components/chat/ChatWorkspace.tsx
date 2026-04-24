@@ -32,15 +32,8 @@ type WsPayload = {
   };
 };
 
-const LOG = "[T2S WS]";
-
-function logWs(...args: unknown[]) {
-  console.info(LOG, ...args);
-}
-
 export function ChatWorkspace() {
   const wsRef = useRef<WebSocket | null>(null);
-  const bootRef = useRef(false);
   const inFlightRef = useRef(false);
   const chatIdRef = useRef<number | null>(null);
   const expandedChatIdRef = useRef<number | null>(null);
@@ -69,9 +62,7 @@ export function ChatWorkspace() {
     try {
       const list = await fetchChats();
       setChats(list);
-    } catch (e) {
-      logWs("fetchChats failed", e);
-    }
+    } catch {}
   }, []);
 
   const mergeChatHistory = useCallback(async (id: number) => {
@@ -81,7 +72,6 @@ export function ChatWorkspace() {
       setChatHistories((prev) => ({ ...prev, [id]: chronological }));
       return chronological;
     } catch (e) {
-      logWs("fetchChatHistory failed", e);
       setChatHistories((prev) => ({ ...prev, [id]: [] }));
       return [] as ApiHistoryMessage[];
     }
@@ -125,24 +115,18 @@ export function ChatWorkspace() {
   }, []);
 
   const closeWs = useCallback(() => {
-    if (wsRef.current) {
-      logWs("close()", "readyState=", wsRef.current.readyState);
-    }
     wsRef.current?.close();
     wsRef.current = null;
     inFlightRef.current = false;
   }, []);
 
   const applyWsMessage = useCallback((raw: string) => {
-    logWs("message raw length=", raw.length, "preview=", raw.slice(0, 200));
     let data: WsPayload;
     try {
       data = JSON.parse(raw) as WsPayload;
-    } catch (e) {
-      logWs("JSON.parse failed", e);
+    } catch {
       return;
     }
-    logWs("parsed type=", data.type, "chat_id=", data.chat_id);
     if (data.type === "sql") {
       if (typeof data.chat_id === "number") {
         setChatId(data.chat_id);
@@ -168,12 +152,10 @@ export function ChatWorkspace() {
         const s = wsRef.current;
         wsRef.current = null;
         inFlightRef.current = false;
-        logWs("closing after data");
         s?.close();
       });
     }
     if (data.type === "error") {
-      logWs("server error payload", data.text);
       setErrorMessage(data.text ?? "Ошибка");
       if (typeof data.chat_id === "number") void mergeChatHistory(data.chat_id);
       const s = wsRef.current;
@@ -184,9 +166,8 @@ export function ChatWorkspace() {
   }, [mergeChatHistory, refreshChats]);
 
   const connectAndSend = useCallback(
-    (text: string) => {
+    (text: string, options?: { consumePendingOnOpen?: boolean }) => {
       if (inFlightRef.current) {
-        logWs("skip connect: request already in flight");
         return;
       }
       closeWs();
@@ -204,17 +185,16 @@ export function ChatWorkspace() {
       void refreshChats();
 
       const url = getChatWebSocketUrl();
-      logWs("connecting", url, "chatId=", chatId);
       const ws = new WebSocket(url);
       wsRef.current = ws;
-      logWs("WebSocket constructed readyState=", ws.readyState, "(0=CONNECTING)");
 
       ws.onopen = () => {
-        logWs("open readyState=", ws.readyState);
+        if (options?.consumePendingOnOpen) {
+          sessionStorage.removeItem("t2s:pendingText");
+        }
         const out: { text: string; chat_id?: number } = { text };
         if (chatId != null) out.chat_id = chatId;
         const body = JSON.stringify(out);
-        logWs("send", body.length > 500 ? body.slice(0, 500) + "…" : body);
         ws.send(body);
         const idAfterSend = chatIdRef.current;
         if (idAfterSend != null) {
@@ -222,15 +202,13 @@ export function ChatWorkspace() {
         }
       };
       ws.onmessage = (ev) => applyWsMessage(String(ev.data));
-      ws.onerror = (ev) => {
-        logWs("onerror", ev.type, "readyState=", ws.readyState);
+      ws.onerror = () => {
         setErrorMessage("Не удалось подключиться к серверу");
         inFlightRef.current = false;
         wsRef.current = null;
         ws.close();
       };
       ws.onclose = (ev) => {
-        logWs("onclose code=", ev.code, "reason=", ev.reason || "(empty)", "wasClean=", ev.wasClean);
         inFlightRef.current = false;
         if (wsRef.current === ws) wsRef.current = null;
         void refreshChats();
@@ -250,16 +228,12 @@ export function ChatWorkspace() {
   useEffect(() => () => closeWs(), [closeWs]);
 
   useEffect(() => {
-    if (bootRef.current) return;
-    bootRef.current = true;
     const pending = sessionStorage.getItem("t2s:pendingText");
     if (!pending?.trim()) return;
-    sessionStorage.removeItem("t2s:pendingText");
     const q = pending.trim();
     const id = window.setTimeout(() => {
       setUserBubble(q);
-      logWs("bootstrap from sessionStorage, len=", q.length);
-      connectAndSend(q);
+      connectAndSend(q, { consumePendingOnOpen: true });
     }, 0);
     return () => window.clearTimeout(id);
   }, [connectAndSend]);
@@ -270,8 +244,8 @@ export function ChatWorkspace() {
     return () => window.clearInterval(id);
   }, [phase, errorMessage]);
 
-  const handleSend = () => {
-    const text = draft.trim();
+  const handleSend = (nextValue?: string) => {
+    const text = (nextValue ?? draft).trim();
     if (!text) return;
     if ((phase === "loading" && !errorMessage) || inFlightRef.current) return;
     setUserBubble(text);
@@ -331,8 +305,7 @@ export function ChatWorkspace() {
       try {
         const chat = await fetchChat(id);
         setChats((prev) => prev.map((x) => (x.id === id ? { ...x, ...chat } : x)));
-      } catch (e) {
-        logWs("fetchChat failed", e);
+      } catch {
         setErrorMessage("Не удалось загрузить чат");
         setChatSwitchPending(false);
         return;
@@ -374,7 +347,6 @@ export function ChatWorkspace() {
         setHasData(payload.length > 0);
         setPhase("ready");
       } catch (e) {
-        logWs("fetchMessageDetail failed", e);
         setErrorMessage("Не удалось загрузить ответ по этому запросу");
         setPhase("idle");
       } finally {
@@ -393,7 +365,6 @@ export function ChatWorkspace() {
         await refreshChats();
         setErrorMessage(null);
       } catch (e) {
-        logWs("updateChat failed", e);
         setErrorMessage("Не удалось переименовать чат");
       }
     },
@@ -418,7 +389,6 @@ export function ChatWorkspace() {
         await refreshChats();
         setErrorMessage(null);
       } catch (e) {
-        logWs("deleteChat failed", e);
         setErrorMessage("Не удалось удалить чат");
       }
     },
@@ -456,7 +426,6 @@ export function ChatWorkspace() {
       await navigator.clipboard?.writeText(raw);
       setErrorMessage(null);
     } catch (e) {
-      logWs("copy leaf sql failed", e);
       setErrorMessage("Не удалось получить SQL для копирования");
     }
   }, []);
@@ -472,7 +441,6 @@ export function ChatWorkspace() {
       clearMainPanel();
       await refreshChats();
     } catch (e) {
-      logWs("createChat failed", e);
       setErrorMessage("Не удалось создать чат");
     } finally {
       setNewChatPending(false);
@@ -487,9 +455,7 @@ export function ChatWorkspace() {
           const chronological = await mergeChatHistory(chatId);
           messageId = chronological[chronological.length - 1]?.id ?? null;
           if (messageId != null) setSelectedQueryMessageId(messageId);
-        } catch (e) {
-          logWs("resolve message id for export failed", e);
-        }
+        } catch {}
       }
       if (messageId == null) {
         setErrorMessage("В этом чате пока нет запроса для выгрузки. Выберите подчат или отправьте новый запрос.");
@@ -507,7 +473,6 @@ export function ChatWorkspace() {
         URL.revokeObjectURL(href);
         setErrorMessage(null);
       } catch (e) {
-        logWs("export failed", e);
         setErrorMessage("Не удалось скачать файл");
       }
     },

@@ -31,6 +31,9 @@ body {
 .t2s-query-area {
   scrollbar-width: thin;
   scrollbar-color: #006b62 #d8d8d8;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .t2s-query-area::-webkit-scrollbar {

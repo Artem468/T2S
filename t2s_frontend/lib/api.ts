@@ -11,6 +11,10 @@ export type ApiHistoryMessage = {
   created_at: string;
 };
 
+export type ApiQuestionItem = {
+  text: string;
+};
+
 export type ApiMessageDetail = {
   id: number;
   message: string;
@@ -220,6 +224,31 @@ export async function deleteChat(chatId: number): Promise<void> {
 
 export async function fetchChatHistory(chatId: number): Promise<ApiHistoryMessage[]> {
   return requestJson<ApiHistoryMessage[]>(`${chatId}/history`, { method: "GET" });
+}
+
+export async function fetchChatQuestions(): Promise<ApiQuestionItem[]> {
+  const raw = await requestJson<unknown>("questions", { method: "GET" });
+  const source = (() => {
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === "object" && raw !== null) {
+      const maybeData = (raw as { data?: unknown; questions?: unknown; items?: unknown });
+      if (Array.isArray(maybeData.data)) return maybeData.data;
+      if (Array.isArray(maybeData.questions)) return maybeData.questions;
+      if (Array.isArray(maybeData.items)) return maybeData.items;
+    }
+    return [];
+  })();
+
+  return source
+    .map((item) => {
+      if (typeof item === "string") return { text: item.trim() };
+      if (typeof item === "object" && item !== null && "text" in item) {
+        const textValue = (item as { text?: unknown }).text;
+        if (typeof textValue === "string") return { text: textValue.trim() };
+      }
+      return null;
+    })
+    .filter((item): item is ApiQuestionItem => Boolean(item?.text));
 }
 
 export async function fetchMessageDetail(messageId: number): Promise<ApiMessageDetail> {
