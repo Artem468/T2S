@@ -81,8 +81,8 @@ class DatabaseConnectionView(APIView):
     @extend_schema(
         summary="Подключить внешнюю БД",
         description=(
-            "Создает и активирует подключение к PostgreSQL/MySQL/SQLite. "
-            "Для SQLite передается файл базы данных"
+                "Создает и активирует подключение к PostgreSQL/MySQL/SQLite. "
+                "Для SQLite передается файл базы данных"
         ),
         request=DatabaseConnectionSerializer,
         responses={201: DatabaseConnectionResponseSerializer},
@@ -134,6 +134,16 @@ class DatabaseConnectionView(APIView):
             response_data["sqlite_file"] = sqlite_file_name
 
         return Response(response_data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(
+        summary="Получить список всех подключений",
+        responses={200: DatabaseConnectionResponseSerializer(many=True)},
+        tags=["Подключения к БД"],
+    )
+    def get(self, request):
+        connections = DatabaseConnection.objects.all().order_by('-created_at')
+        serializer = DatabaseConnectionResponseSerializer(connections, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class MessageDetailView(APIView):
