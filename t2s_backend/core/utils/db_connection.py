@@ -89,7 +89,10 @@ def get_active_connection_payload() -> dict[str, Any] | None:
             set_active_connection_payload(payload)
             return payload
 
-    return None
+    return {
+        "db_type": DatabaseType.SQLITE,
+        "sqlite_file_path": "incity.db",
+    }
 
 
 def set_active_connection_payload(payload: dict[str, Any]) -> None:
