@@ -20,10 +20,6 @@ export default function Home() {
     const text = (nextValue ?? query).trim();
     if (!text) return;
     sessionStorage.setItem("t2s:pendingText", text);
-    if (typeof window !== "undefined") {
-      window.location.assign("/chat");
-      return;
-    }
     router.push("/chat");
   };
 
@@ -34,10 +30,6 @@ export default function Home() {
   };
 
   const handleGoWorkspace = () => {
-    if (typeof window !== "undefined") {
-      window.location.assign("/chat");
-      return;
-    }
     router.push("/chat");
   };
 
@@ -46,7 +38,7 @@ export default function Home() {
       <div className="mx-auto flex w-full max-w-6xl flex-col">
         <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="transition-transform duration-300 ease-out hover:scale-[1.03]">
-          <Image src="/t2slogo.svg" alt="T2S logo" width={98} height={64} priority />
+          <Image src="/t2slogo.svg" alt="T2S logo" width={98} height={64} priority unoptimized />
         </div>
         <button
           type="button"
