@@ -57,9 +57,6 @@ def render_mailing_bodies(description, comment, export_links, unsubscribe_url):
     safe_description = escape(description).replace("\n", "<br>")
     safe_comment = escape(comment).replace("\n", "<br>") if comment else ""
 
-    base_url = getattr(settings, "PUBLIC_BASE_URL", "http://localhost").rstrip("/")
-    logo_url = f"{base_url}/static/images/icon.svg"
-
     comment_html = ""
     if comment:
         comment_html = (
@@ -87,13 +84,6 @@ def render_mailing_bodies(description, comment, export_links, unsubscribe_url):
         "style=\"max-width: 900px; background: #f5f5f5; border-radius: 18px; "
         "font-family: 'Trebuchet MS', Arial, sans-serif;\">"
         "<tr><td style=\"padding: 42px 28px 36px;\">"
-        "<div style=\"text-align: center; margin-bottom: 20px; display: flex; justify-content: space-between; \">"
-        f"<img src=\"{logo_url}\" alt=\"T2S\" style=\"max-width: 100px; height: auto; display: block; margin: 0 auto 16px;\">"
-        f"<a href=\"{base_url}\" "
-        "style=\"display: inline-block; border-radius: 18px; background: #ffffff; "
-        "color: #0a7a73; text-decoration: none; font-size: 16px; font-weight: 700; "
-        "line-height: 24px; padding: 12px 28px;\">Перейти в рабочую область</a>"
-        "</div>"
         "<h1 style=\"margin: 0 0 18px; font-size: 64px; line-height: 1.08; "
         "font-weight: 900; color: #0a7a73; text-align: center;\">Рассылка T2S</h1>"
         "<div style=\"height: 16px; width: 100%; max-width: 660px; border-radius: 999px; "
