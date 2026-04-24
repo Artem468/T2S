@@ -525,6 +525,10 @@ export function ChatWorkspace() {
     }
   }, []);
 
+  const handleOpenDatabasePicker = useCallback(() => {
+    window.location.assign("/db/connect");
+  }, []);
+
   return (
     <ChatDashboardView
       phase={phase}
@@ -561,6 +565,7 @@ export function ChatWorkspace() {
       onDownloadFormat={handleDownload}
       mailingMessageId={activeMessageId}
       onCreateMailing={handleCreateMailing}
+      onOpenDatabasePicker={handleOpenDatabasePicker}
     />
   );
 }

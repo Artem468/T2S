@@ -46,6 +46,31 @@ export type ExportFile = {
   fileName: string;
 };
 
+export type DatabaseType = "postgresql" | "mysql" | "sqlite";
+
+export type ApiDatabaseConnection = {
+  id: number;
+  db_type: DatabaseType;
+  username: string;
+  database_name: string;
+  host: string;
+  port: number | null;
+  sqlite_file: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CreateDatabaseConnectionPayload = {
+  db_type: DatabaseType;
+  username?: string;
+  password?: string;
+  database_name?: string;
+  host?: string;
+  port?: number;
+  sqlite_file?: File;
+};
+
 type UpdateChatPayload = {
   name?: string;
 };
@@ -230,4 +255,36 @@ export async function createMailing(payload: CreateMailingPayload): Promise<Crea
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export async function fetchDatabaseConnections(): Promise<ApiDatabaseConnection[]> {
+  return requestJson<ApiDatabaseConnection[]>("db/connect", { method: "GET" });
+}
+
+export async function activateDatabaseConnection(id: number): Promise<{ status: string; active_id: number }> {
+  return requestJson<{ status: string; active_id: number }>(`db/${id}/activate`, { method: "PATCH" });
+}
+
+export async function createDatabaseConnection(payload: CreateDatabaseConnectionPayload): Promise<ApiDatabaseConnection> {
+  const body = new FormData();
+  body.set("db_type", payload.db_type);
+
+  if (payload.db_type === "sqlite") {
+    if (payload.sqlite_file) {
+      body.set("sqlite_file", payload.sqlite_file);
+    }
+  } else {
+    if (payload.username) body.set("username", payload.username);
+    if (payload.password) body.set("password", payload.password);
+    if (payload.database_name) body.set("database_name", payload.database_name);
+    if (payload.host) body.set("host", payload.host);
+    if (typeof payload.port === "number" && Number.isFinite(payload.port)) body.set("port", String(payload.port));
+  }
+
+  const response = await fetch(buildUrl("db/connect"), {
+    method: "POST",
+    body,
+    cache: "no-store",
+  });
+  return readJsonOrThrow<ApiDatabaseConnection>(response);
 }

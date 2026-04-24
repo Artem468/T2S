@@ -7,6 +7,7 @@ import {
   ArrowUpDown,
   Check,
   Copy,
+  Database,
   Download,
   Pencil,
   Plus,
@@ -75,6 +76,7 @@ export type ChatDashboardViewProps = {
   onDownloadFormat?: (fmt: ExportFormat) => void | Promise<void>;
   mailingMessageId?: number | null;
   onCreateMailing?: (payload: CreateMailingPayload) => void | Promise<void>;
+  onOpenDatabasePicker?: () => void;
 };
 
 const sqlTheme = {
@@ -153,6 +155,7 @@ export function ChatDashboardView({
   onDownloadFormat,
   mailingMessageId = null,
   onCreateMailing,
+  onOpenDatabasePicker,
 }: ChatDashboardViewProps) {
   const showBubble = userBubble.length > 0 && (phase === "loading" || phase === "ready");
   const copySource = sqlCopyText ?? sqlText ?? "";
@@ -278,6 +281,18 @@ export function ChatDashboardView({
               ))
             )}
           </nav>
+
+          <div className="mt-4 rounded-[16px] border border-[#e0dde4] bg-white px-4 py-4 shadow-[0_4px_14px_rgba(0,0,0,0.05)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_9px_20px_rgba(0,0,0,0.08)]">
+            <p className="text-[18px] font-bold uppercase leading-none text-[#0b7a73]">БАЗЫ ДАННЫХ</p>
+            <button
+              type="button"
+              className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-[12px] bg-[#c0eeea] py-3 text-[14px] font-semibold text-[#0b7a73] transition-colors hover:bg-[#b4e8e3]"
+              onClick={() => onOpenDatabasePicker?.()}
+            >
+              <Database className="h-4 w-4" strokeWidth={1.8} />
+              Выбрать базу данных
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -645,6 +660,7 @@ export function ChatDashboardView({
               Отправить ссылку
             </button>
           </div>
+
         </div>
       </aside>
     </div>
