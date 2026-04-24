@@ -25,6 +25,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core.ai import generate_questions
 from core.models import Chat, DatabaseConnection, Role, Message
 from core.serializers import (
     ChatSerializer,
@@ -151,7 +152,7 @@ class DatabaseActivateView(APIView):
     @extend_schema(
         summary="Активировать бд",
         tags=["Подключения к БД"],
-        responses={200: OpenApiTypes.OBJECT}  # Опционально для описания ответа
+        responses={200: OpenApiTypes.OBJECT}
     )
     def patch(self, request, pk):
         connection = get_object_or_404(DatabaseConnection, pk=pk)
@@ -477,3 +478,21 @@ class MessageExportView(APIView):
             content_type="application/pdf",
             headers={"Content-Disposition": f'attachment; filename="{filename}.pdf"'},
         )
+
+
+class QuestionGeneratorView(APIView):
+    @extend_schema(
+        summary="Генерирует 3 вопроса о схеме базы данных",
+        description="Берет схему активной базы данных и генерирует 3 вопроса по ней",
+        tags=["Сообщения"]
+    )
+    def get(self, request, *args, **kwargs):
+        try:
+            results = generate_questions()
+            return Response({"data": results}, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

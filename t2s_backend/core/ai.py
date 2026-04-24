@@ -17,11 +17,11 @@ def _get_schema_ddl() -> str:
 
 
 def _build_sql_prompt(
-    question: str,
-    schema_ddl: str,
-    db_type: str,
-    previous_error: str | None = None,
-    failed_sql: str | None = None,
+        question: str,
+        schema_ddl: str,
+        db_type: str,
+        previous_error: str | None = None,
+        failed_sql: str | None = None,
 ) -> str:
     retry_block = ""
     if previous_error:
@@ -97,9 +97,9 @@ def _extract_plain_description(raw: str) -> str:
 
 
 def generate_sql(
-    question: str,
-    previous_error: str | None = None,
-    failed_sql: str | None = None,
+        question: str,
+        previous_error: str | None = None,
+        failed_sql: str | None = None,
 ) -> str:
     db_type = get_runtime_db_type()
     schema_ddl = _get_schema_ddl()
@@ -130,12 +130,40 @@ def generate_description(sql: str, user_question: str = "") -> str:
     return out if out else "Краткое описание запроса."
 
 
+def generate_questions() -> list[str]:
+    schema = _get_schema_ddl()
+    prompt = (
+        "You are an assistant that generates SQL-related questions in Russian."
+        "Given a database schema, generate exactly 3 questions in Russian about the data."
+        "Requirements:"
+        "- Questions must be practical and analytical (e.g., \"топ 10 заказов по цене\", \"покажи отмененные заказы\","
+        " \"найди пользователей с наибольшим количеством заказов\")."
+        "- Questions should be based strictly on the provided schema."
+        "- Use natural, human-like Russian language (not robotic)."
+        "- Avoid repeating the same pattern in all questions."
+        "- Do NOT include SQL queries, only questions."
+        "Output format:"
+        "- Return exactly 3 questions"
+        "- Separate them using a line break"
+        "- No numbering, no explanations, no extra text"
+        "Schema:"
+        f"{schema}"
+    )
+    data = __process_request(prompt)
+    if data is not None:
+        result = map(lambda i: i.strip(), data.split("\n"))
+    else:
+        result = []
+    return result
+
+
 def __process_request(prompt: str) -> str | None:
     url = "https://foundation-models.api.cloud.ru/v1"
 
     client = OpenAI(
         api_key=settings.AI_API_KEY,
         base_url=url,
+        timeout=180,
     )
 
     messages: list[ChatCompletionMessageParam] = [
