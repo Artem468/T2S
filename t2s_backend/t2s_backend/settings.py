@@ -37,6 +37,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1",
     "https://sincerely-masculine-albatross.cloudpub.ru",
     "https://owlishly-tireless-ptarmigan.cloudpub.ru",
+    "https://tacitly-primary-butterfish.cloudpub.ru",
 ]
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
@@ -44,6 +45,7 @@ CSRF_TRUSTED_ORIGINS = [
     "http://127.0.0.1",
     "https://sincerely-masculine-albatross.cloudpub.ru",
     "https://owlishly-tireless-ptarmigan.cloudpub.ru",
+    "https://tacitly-primary-butterfish.cloudpub.ru",
 ]
 
 engine = create_async_engine("sqlite+aiosqlite:///incity.db")

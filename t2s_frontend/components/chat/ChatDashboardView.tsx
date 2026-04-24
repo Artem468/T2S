@@ -459,10 +459,10 @@ export function ChatDashboardView({
 
           <p className="mt-2 text-[11px] uppercase tracking-[0.08em] text-[#8d8d93]">SQL КОД</p>
 
-          <div className="relative mt-3 min-h-[160px] rounded-[10px] bg-[#e8e4ea] p-4 lg:min-h-[196px]">
+          <div className="relative mt-3 min-h-[160px] overflow-hidden rounded-[10px] bg-[#e8e4ea] p-4 lg:min-h-[196px]">
             {sqlText ? (
               <>
-                <div className="max-h-[220px] overflow-auto pr-10 lg:max-h-[280px]">
+                <div className="max-h-[min(42vh,320px)] min-h-0 overflow-y-auto overflow-x-hidden pr-10 [scrollbar-gutter:stable] lg:max-h-[min(48vh,400px)]">
                   <SyntaxHighlighter
                     language="sql"
                     style={sqlTheme}
