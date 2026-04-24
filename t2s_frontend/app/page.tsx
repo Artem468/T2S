@@ -71,7 +71,7 @@ export default function Home() {
                 key={text}
                 type="button"
                 onClick={() => handleSuggestionClick(text)}
-                className="flex max-w-full items-start gap-1 rounded-lg bg-white px-4 py-2 text-[13px] text-[#8C8C8C] shadow-[0_1px_3px_rgba(0,0,0,0.08)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:text-[#6f6f76] hover:shadow-[0_6px_14px_rgba(0,0,0,0.10)]"
+                className="flex max-w-full items-center gap-1 rounded-lg bg-white px-4 py-2 text-[13px] text-[#8C8C8C] shadow-[0_1px_3px_rgba(0,0,0,0.08)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:text-[#6f6f76] hover:shadow-[0_6px_14px_rgba(0,0,0,0.10)]"
               >
                 <Icon size={13} className="text-[#B3B3B3]" />
                 <span className="min-w-0 whitespace-normal break-words text-left">{text}</span>
