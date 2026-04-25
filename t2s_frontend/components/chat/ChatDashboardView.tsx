@@ -33,6 +33,7 @@ export type DashboardPhase = "idle" | "loading" | "ready";
 
 export type SidebarQueryLeaf = { id: number; text: string };
 
+
 export type SidebarChatItem = {
   id: number;
   title: string;
